@@ -1,4 +1,4 @@
-auth_key
+*auth_key
 router/auth_key
 router/rtable
-rtable
+*rtable
