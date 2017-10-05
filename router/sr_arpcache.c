@@ -17,33 +17,24 @@
   See the comments in the header file for an idea of what it should look like.
 */
 void sr_arpcache_sweepreqs(struct sr_instance *sr) { 
-
-  /*Send ARP request once every second until a reply comes back or after sending 5 requests*/
-
   /*Iterate through the ARP request queue and re-send any outstanding ARP requests that haven't
    * been sent in the last second. If an ARP request has been sent 5 times with no reponse, a dest
    * host unreachable should be sent back to all the sender of packets that were waiting on a reply
    * to this ARP request
    */ 
 
+   struct sr_arpreq *arp_request = sr->cache->requests;
+
+   while(arp_request != NULL) {
+     struct sr_arpreq * next_request = arp_request->next;
+     handle_arp_req(sr, arp_request);
+     arp_request = next_request;
+   }
 }
 
 void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) { 
 /*  The handle_arpreq() function is a function you should write, and it should
    handle sending ARP requests if necessary:
-
-   function handle_arpreq(req):
-       if difftime(now, req->sent) > 1.0
-           if req->times_sent >= 5:
-               send icmp host unreachable to source addr of all pkts waiting
-                 on this request
-               arpreq_destroy(req)
-           else:
-               send arp request
-               req->sent = now
-               req->times_sent++
-
-   --
 
    The ARP reply processing code should move entries from the ARP request
    queue to the ARP cache:
@@ -55,49 +46,42 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
        send all packets on the req->packets linked list
        arpreq_destroy(req)
 */
-/*Structure of a ICMP header
-struct sr_icmp_hdr {
-  uint8_t icmp_type;
-  uint8_t icmp_code;
-  uint16_t icmp_sum;
-
-} __attribute__ ((packed)) ;
-typedef struct sr_icmp_hdr sr_icmp_hdr_t;
-
-
- Structure of a type3 ICMP header
-
-struct sr_icmp_t3_hdr {
-  uint8_t icmp_type;
-  uint8_t icmp_code;
-  uint16_t icmp_sum;
-  uint16_t unused;
-  uint16_t next_mtu;
-  uint8_t data[ICMP_DATA_SIZE];
-
-} __attribute__ ((packed)) ;
-typedef struct sr_icmp_t3_hdr sr_icmp_t3_hdr_t;
-
-*/
-
     time_t current_time;
     current_time = time(NULL);
 
     if (current_time - sr_arpreq->sent > 1.0) {
       if (sr_arpreq->sent >= 5){
-         sr_icmp_t3_hdr * icmp_msg;
-          
 
-        /*Send icmp host unreachable to source addr of all pkts waiting on this request*/
-        sr_arpreq_destroy(sr->cache, r_arpreq);
+        struct sr_packet *curr_packet = sr_arpreq->packets;
+
+        while(curr_packet != NULL) {
+           struct sr_packet *next_packet = sr_arpreq->packets->next;
+           handle_icmp(sr, 3, 1, curr_packet->buf, curr_packet->len, curr_packet->iface);
+           curr_packet = next_packet;
+        }
+        sr_arpreq_destroy(sr->cache, sr_arp_req);
+
       } else {
         /*Send arp request*/
+        uint8_t *req_packet = malloc(28 + 6); 
+        struct sr_arp_hdr *arp_hdr = (struct sr_arp_hdr *)(req_packet + 14);
+        struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *) req_packet;
+
+        arp_hdr->ar_hrd = 1;  
+        arp_hdr->ar_pro = 2054; 
+        arp_hdr->ar_hln = 6;  
+        arp_hdr->ar_pln = 4;  
+        arp_hdr->ar_op = htons(1);  
+        arp_hdr->ar_sha = ;  
+        arp_hdr->ar_sip = sr_arp_req->ip;  
+        /*Don't know tagert mac address yet*/
+        memcpy(&arp_hdr.ar_tha, 0, 6 * sizeof(uint8_t));  
+        arp_hdr->ar_tip = ;  
+
         sr_arpreq->sent = current_time;
         sr_arpreq->times_sent++;
       }
     } 
-
-
 }
 /* You should not need to touch the rest of this code. */
 
