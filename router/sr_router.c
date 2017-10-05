@@ -122,8 +122,5 @@ void sr_handle_arp(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */)
 {
-
-    
-  print_hdrs(packet, len);
-  printf("*** -> Received packet of length %d \n",len);
+  //operation code = 1 for request and 2 for reply
 }
