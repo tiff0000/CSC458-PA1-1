@@ -8,6 +8,7 @@
 #include <string.h>
 #include "sr_arpcache.h"
 #include "sr_router.h"
+#include "sr_icmp.h"
 #include "sr_if.h"
 #include "sr_protocol.h"
 

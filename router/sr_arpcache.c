@@ -8,6 +8,7 @@
 #include <string.h>
 #include "sr_arpcache.h"
 #include "sr_router.h"
+#include "sr_icmp.h"
 #include "sr_if.h"
 #include "sr_protocol.h"
 
@@ -23,11 +24,11 @@ void sr_arpcache_sweepreqs(struct sr_instance *sr) {
    * to this ARP request
    */ 
 
-   struct sr_arpreq *arp_request = sr->cache->requests;
+   struct sr_arpreq *arp_request = sr->cache.requests;
 
    while(arp_request != NULL) {
      struct sr_arpreq * next_request = arp_request->next;
-     handle_arp_req(sr, arp_request);
+     handle_arpreq(sr, arp_request);
      arp_request = next_request;
    }
 }
@@ -49,17 +50,17 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
     time_t current_time;
     current_time = time(NULL);
 
-    if (current_time - sr_arpreq->sent > 1.0) {
-      if (sr_arpreq->sent >= 5){
+    if (current_time - sr_arp_req->sent > 1.0) {
+      if (sr_arp_req->sent >= 5){
 
-        struct sr_packet *curr_packet = sr_arpreq->packets;
+        struct sr_packet *curr_packet = sr_arp_req->packets;
 
         while(curr_packet != NULL) {
-           struct sr_packet *next_packet = sr_arpreq->packets->next;
+           struct sr_packet *next_packet = sr_arp_req->packets->next;
            handle_icmp(sr, 3, 1, curr_packet->buf, curr_packet->len, curr_packet->iface);
            curr_packet = next_packet;
         }
-        sr_arpreq_destroy(sr->cache, sr_arp_req);
+        sr_arpreq_destroy(&(sr->cache), sr_arp_req);
 
       } else {
         /*Send arp request*/
@@ -72,14 +73,14 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
         arp_hdr->ar_hln = 6;  
         arp_hdr->ar_pln = 4;  
         arp_hdr->ar_op = htons(1);  
-        arp_hdr->ar_sha = ;  
+        /*arp_hdr->ar_sha = ; */ 
         arp_hdr->ar_sip = sr_arp_req->ip;  
         /*Don't know tagert mac address yet*/
-        memcpy(&arp_hdr.ar_tha, 0, 6 * sizeof(uint8_t));  
-        arp_hdr->ar_tip = ;  
+        /*memcpy(&arp_hdr->ar_tha, 0, 6 * sizeof(uint8_t));*/ 
+        /*arp_hdr->ar_tip = ; */ 
 
-        sr_arpreq->sent = current_time;
-        sr_arpreq->times_sent++;
+        sr_arp_req->sent = current_time;
+        sr_arp_req->times_sent++;
       }
     } 
 }
