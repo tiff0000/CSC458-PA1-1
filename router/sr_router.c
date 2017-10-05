@@ -21,6 +21,7 @@
 #include "sr_protocol.h"
 #include "sr_arpcache.h"
 #include "sr_utils.h"
+#define IP_SIZE 20
 
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
@@ -75,17 +76,54 @@ void sr_handlepacket(struct sr_instance* sr,
   assert(sr);
   assert(packet);
   assert(interface);
- 
-  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) packet;
-  
-  uint16_t eth_type = ethertype(buf);
-   
 
   print_hdrs(packet, len);
-
   printf("*** -> Received packet of length %d \n",len);
 
-  /* fill in code here */
+  sr_ethernet_hdr_t *ethernet_header = (sr_ethernet_hdr_t *)packet;
+  uint16_t ether_type = ntohs(ethernet_header->ether_type); 
+  int min_length = sizeof(sr_ethernet_hdr_t);
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) packet;
 
-}/* end sr_ForwardPacket */
+  if (ether_type == 2054){
+    /*ARP REQUEST*/
+    printf("ARP REQUEST\n");
+    sr_handle_arp(sr, packet, len, interface);
+  } else if (ether_type == 2048) {
+      /*IP REQUEST*/
+      printf("IP REQUEST\n");
+      sr_handle_ip(sr, packet, len, interface);
+  }
+}
 
+void sr_handle_ip(struct sr_instance* sr,
+        uint8_t * packet/* lent */,
+        unsigned int len,
+        char* interface/* lent */)
+{
+  sr_ethernet_hdr_t *ethernet_header = (sr_ethernet_hdr_t *)packet;
+  uint16_t ether_type = ntohs(ethernet_header->ether_type);
+  int min_length = sizeof(sr_ethernet_hdr_t);
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) packet;
+
+  if (len > min_length){
+    /*packet meets min length requirement*/
+    /*check checksum*/
+    uint16_t sum = cksum(ip_header, IP_SIZE);
+    printf("cksum result: %d\n", ntohs(sum));
+    printf("actual checksum : %d\n", ntohs(ip_header->ip_sum));
+  } else {
+    printf("Packet is too small:(\n");
+  }
+}
+
+void sr_handle_arp(struct sr_instance* sr,
+        uint8_t * packet/* lent */,
+        unsigned int len,
+        char* interface/* lent */)
+{
+
+    
+  print_hdrs(packet, len);
+  printf("*** -> Received packet of length %d \n",len);
+}

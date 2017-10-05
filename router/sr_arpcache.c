@@ -17,14 +17,88 @@
   See the comments in the header file for an idea of what it should look like.
 */
 void sr_arpcache_sweepreqs(struct sr_instance *sr) { 
-    /* Iterate through the ARP request queue and re-send any outstanding 
-     * ARP requests that haven't been sent in the past second
-     * if an ARP request has been sent 5 times with no response, a destination
-     * host unreachable should go back to all the sender of packets that
-     * were waiting on a reply to this ARP request
-    */
+
+  /*Send ARP request once every second until a reply comes back or after sending 5 requests*/
+
+  /*Iterate through the ARP request queue and re-send any outstanding ARP requests that haven't
+   * been sent in the last second. If an ARP request has been sent 5 times with no reponse, a dest
+   * host unreachable should be sent back to all the sender of packets that were waiting on a reply
+   * to this ARP request
+   */ 
+
 }
 
+void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) { 
+/*  The handle_arpreq() function is a function you should write, and it should
+   handle sending ARP requests if necessary:
+
+   function handle_arpreq(req):
+       if difftime(now, req->sent) > 1.0
+           if req->times_sent >= 5:
+               send icmp host unreachable to source addr of all pkts waiting
+                 on this request
+               arpreq_destroy(req)
+           else:
+               send arp request
+               req->sent = now
+               req->times_sent++
+
+   --
+
+   The ARP reply processing code should move entries from the ARP request
+   queue to the ARP cache:
+
+   # When servicing an arp reply that gives us an IP->MAC mapping
+   req = arpcache_insert(ip, mac)
+
+   if req:
+       send all packets on the req->packets linked list
+       arpreq_destroy(req)
+*/
+/*Structure of a ICMP header
+struct sr_icmp_hdr {
+  uint8_t icmp_type;
+  uint8_t icmp_code;
+  uint16_t icmp_sum;
+
+} __attribute__ ((packed)) ;
+typedef struct sr_icmp_hdr sr_icmp_hdr_t;
+
+
+ Structure of a type3 ICMP header
+
+struct sr_icmp_t3_hdr {
+  uint8_t icmp_type;
+  uint8_t icmp_code;
+  uint16_t icmp_sum;
+  uint16_t unused;
+  uint16_t next_mtu;
+  uint8_t data[ICMP_DATA_SIZE];
+
+} __attribute__ ((packed)) ;
+typedef struct sr_icmp_t3_hdr sr_icmp_t3_hdr_t;
+
+*/
+
+    time_t current_time;
+    current_time = time(NULL);
+
+    if (current_time - sr_arpreq->sent > 1.0) {
+      if (sr_arpreq->sent >= 5){
+         sr_icmp_t3_hdr * icmp_msg;
+          
+
+        /*Send icmp host unreachable to source addr of all pkts waiting on this request*/
+        sr_arpreq_destroy(sr->cache, r_arpreq);
+      } else {
+        /*Send arp request*/
+        sr_arpreq->sent = current_time;
+        sr_arpreq->times_sent++;
+      }
+    } 
+
+
+}
 /* You should not need to touch the rest of this code. */
 
 /* Checks if an IP->MAC mapping is in the cache. IP is in network byte order.
