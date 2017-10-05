@@ -75,6 +75,13 @@ void sr_handlepacket(struct sr_instance* sr,
   assert(sr);
   assert(packet);
   assert(interface);
+ 
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) packet;
+  
+  uint16_t eth_type = ethertype(buf);
+   
+
+  print_hdrs(packet, len);
 
   printf("*** -> Received packet of length %d \n",len);
 
