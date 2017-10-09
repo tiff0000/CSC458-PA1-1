@@ -57,7 +57,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
 
         while(curr_packet != NULL) {
            struct sr_packet *next_packet = sr_arp_req->packets->next;
-           handle_icmp(sr, 3, 1, curr_packet->buf, curr_packet->len, curr_packet->iface);
+           /**handle_icmp(sr, 3, 1, curr_packet->buf, curr_packet->len, curr_packet->iface);*/
            curr_packet = next_packet;
         }
         sr_arpreq_destroy(&(sr->cache), sr_arp_req);

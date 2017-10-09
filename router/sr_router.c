@@ -21,7 +21,8 @@
 #include "sr_protocol.h"
 #include "sr_arpcache.h"
 #include "sr_utils.h"
-#define IP_SIZE 20
+#define IP_BEGIN 14
+#define ARP_BEGIN 14
 
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
@@ -81,9 +82,10 @@ void sr_handlepacket(struct sr_instance* sr,
   printf("*** -> Received packet of length %d \n",len);
 
   sr_ethernet_hdr_t *ethernet_header = (sr_ethernet_hdr_t *)packet;
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *)packet;
+
   uint16_t ether_type = ntohs(ethernet_header->ether_type); 
   int min_length = sizeof(sr_ethernet_hdr_t);
-  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) packet;
 
   if (ether_type == 2054){
     /*ARP REQUEST*/
@@ -102,15 +104,15 @@ void sr_handle_ip(struct sr_instance* sr,
         char* interface/* lent */)
 {
   int min_length = sizeof(sr_ethernet_hdr_t);
-  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) packet;
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + IP_BEGIN);
 
   printf("PRINTING DESTINATION IP\n");
-  printf(ip_header->ip_dst);
+  print_addr_ip_int(ip_header->ip_dst);
 
   if (len > min_length){
     /*packet meets min length requirement*/
     /*check checksum*/
-    uint16_t sum = cksum(ip_header, IP_SIZE);
+    uint16_t sum = cksum(ip_header, 20);
     printf("cksum result: %d\n", ntohs(sum));
     printf("actual checksum : %d\n", ntohs(ip_header->ip_sum));
   } else {
@@ -123,5 +125,12 @@ void sr_handle_arp(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */)
 {
-  //operation code = 1 for request and 2 for reply
+  /*operation code = 1 for request and 2 for reply*/
+  sr_arp_hdr_t *arp_header = (sr_arp_hdr_t *) (packet + ARP_BEGIN);
+  printf("ARP OP CODE : %d \n", ntohs(arp_header->ar_op));
+  if (ntohs(arp_header->ar_op) == 1){
+    printf("REQUEST\n");
+  } else if (ntohs(arp_header->ar_op) == 0){
+    sr_arpcache_insert(sr->cache, unsigned char *mac, uint32_t ip);
+  }
 }
