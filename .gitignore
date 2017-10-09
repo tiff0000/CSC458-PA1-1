@@ -3,3 +3,4 @@ router/auth_key
 router/rtable
 *rtable
 *.o
+*.swp

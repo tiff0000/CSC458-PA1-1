@@ -101,10 +101,11 @@ void sr_handle_ip(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */)
 {
-  sr_ethernet_hdr_t *ethernet_header = (sr_ethernet_hdr_t *)packet;
-  uint16_t ether_type = ntohs(ethernet_header->ether_type);
   int min_length = sizeof(sr_ethernet_hdr_t);
   sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) packet;
+
+  printf("PRINTING DESTINATION IP\n");
+  printf(ip_header->ip_dst);
 
   if (len > min_length){
     /*packet meets min length requirement*/

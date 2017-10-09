@@ -12,10 +12,12 @@
 #include "sr_if.h"
 #include "sr_protocol.h"
 
-
+/** Handle all ICMP messages
+*/
 void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet,
-        unsigned int len,
-        char* interface) {
+
+         unsigned int len,
+         char* interface) {
 
          sr_icmp_hdr * icmp_msg;
          sr_ethernet_hdr * eth_hdr;
