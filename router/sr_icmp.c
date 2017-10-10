@@ -30,7 +30,7 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet,
          ip_hdr->ip_tos = 0;
          ip_hdr->ip_len = htons(sizeof(/*whatever data is being sent*/));
          ip_hdr->ip_off = htons(0);
-         /*ip_hdr->ip_ttl = ;*/
+         ip_hdr->ip_ttl = 64;
          ip_hdr->ip_p = 1;
          ip_hdr->ip_sum = 0;
          ip_hdr->src = /*interface ip*/;

@@ -4,3 +4,4 @@ router/rtable
 *rtable
 *.o
 *.swp
+.*

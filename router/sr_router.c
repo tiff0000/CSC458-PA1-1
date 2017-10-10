@@ -125,12 +125,47 @@ void sr_handle_arp(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */)
 {
-  /*operation code = 1 for request and 2 for reply*/
+
   sr_arp_hdr_t *arp_header = (sr_arp_hdr_t *) (packet + ARP_BEGIN);
-  printf("ARP OP CODE : %d \n", ntohs(arp_header->ar_op));
-  if (ntohs(arp_header->ar_op) == 1){
-    printf("REQUEST\n");
-  } else if (ntohs(arp_header->ar_op) == 0){
-    sr_arpcache_insert(sr->cache, unsigned char *mac, uint32_t ip);
-  }
+  struct sr_if *irface = sr_get_interface(sr, interface); 
+
+  if (arp_header->ar_tip == irface->ip){ 
+    printf("DESTINED TO ONE OF OUR ROUTER'S IPs\n");
+    if (ntohs(arp_header->ar_op) == 1){
+      printf("REQUEST\n");
+      /*Construct ARP reply and send it back*/
+      /*destination is broadcast MAC address*/ 
+      
+
+
+
+
+
+    } else if (ntohs(arp_header->ar_op) == 0){
+      printf("REPLY\n");
+      /*cache it, go through request queue and send outstanding packets*/
+      struct sr_arpreq *request = sr_arpcache_insert(&sr->cache, arp_header->ar_sha, arp_header->ar_sip);
+
+      if (request) {
+        struct sr_packet *pkt_list = request->packets;
+
+        while(pkt_list != NULL) {
+          struct sr_packet * next_request = pkt_list->next;
+          sr_ethernet_hdr_t *ethernet_hdr = (sr_ethernet_hdr_t *) (pkt_list->buf); 
+
+          /*ethernet_hdr->ether_dhost = arp_header->ar_sha;*/
+
+          send_packet(sr, pkt_list->buf, pkt_list->len, pkt_list->iface);
+          pkt_list = next_request;
+        }
+        sr_arpcache_destroy(&sr->cache);
+      } else{
+       /*IP is not in the request queue*/
+      } 
+    } else {
+      /*Invalid OP Code*/
+    }
+ } else {
+   /*Not destined to one our interfaces*/
+ }
 }
