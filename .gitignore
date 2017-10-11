@@ -2,6 +2,7 @@
 router/auth_key
 router/rtable
 *rtable
-*.o
+router/*.o
+router/*.swp
 *.swp
-.*
+router/.*

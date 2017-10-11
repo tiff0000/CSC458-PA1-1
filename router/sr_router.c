@@ -134,12 +134,28 @@ void sr_handle_arp(struct sr_instance* sr,
     if (ntohs(arp_header->ar_op) == 1){
       printf("REQUEST\n");
       /*Construct ARP reply and send it back*/
-      /*destination is broadcast MAC address*/ 
+      /*destination is broadcast MAC address*/
+      /*New packet: 28 (for arp header) + 14 (for ethernet header)*/
+      uint8_t *arp_reply = malloc(sizeof(struct sr_arp_hdr) + sizeof(struct sr_ethernet_hdr)); 
+      sr_arp_hdr_t *arp_header_request = (sr_arp_hdr_t*) (arp_reply + sizeof(struct sr_arp_hdr));
+      sr_ethernet_hdr_t *ether_header_request = (sr_ethernet_hdr_t*) (arp_reply + sizeof(struct sr_ethernet_hdr));
+
+      /*Source ethernet/arp header*/
+      sr_arp_hdr_t *arp_header_src = (sr_arp_hdr_t*) (packet + sizeof(struct sr_arp_hdr));
+      sr_ethernet_hdr_t *ether_header_src = (sr_ethernet_hdr_t*) (packet + sizeof(struct sr_ethernet_hdr));
       
+      arp_header_request->ar_hrd = htons(1);   
+      arp_header_request->ar_pro = htons(2048);   
+      arp_header_request->ar_hln = arp_header_src->ar_hln;   
+      arp_header_request->ar_pln = arp_header_src->ar_pln;   
+      arp_header_request->ar_op = 0;
+      memcpy(arp_header_request->ar_sha, irface->addr, sizeof(irface->addr));
+      /*Just a pointer to a list^^, need to copy character per character*/
+      arp_header_request->ar_sip = irface->ip;
+      memcpy(arp_header_request->ar_tha, 0xff, sizeof(arp_header_request->ar_tha));
+      arp_header_request->ar_tip = arp_header_src->ar_tip;
 
-
-
-
+      sr_send_packet(sr, arp_reply, 42, irface->name);
 
     } else if (ntohs(arp_header->ar_op) == 0){
       printf("REPLY\n");
@@ -155,7 +171,7 @@ void sr_handle_arp(struct sr_instance* sr,
 
           /*ethernet_hdr->ether_dhost = arp_header->ar_sha;*/
 
-          send_packet(sr, pkt_list->buf, pkt_list->len, pkt_list->iface);
+          sr_send_packet(sr, pkt_list->buf, pkt_list->len, pkt_list->iface);
           pkt_list = next_request;
         }
         sr_arpcache_destroy(&sr->cache);
