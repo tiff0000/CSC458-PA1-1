@@ -12,8 +12,9 @@
  **********************************************************************/
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
-
+#include <string.h>
 
 #include "sr_if.h"
 #include "sr_rt.h"
@@ -152,7 +153,7 @@ void sr_handle_arp(struct sr_instance* sr,
       memcpy(arp_header_request->ar_sha, irface->addr, sizeof(irface->addr));
       /*Just a pointer to a list^^, need to copy character per character*/
       arp_header_request->ar_sip = irface->ip;
-      memcpy(arp_header_request->ar_tha, 0xff, sizeof(arp_header_request->ar_tha));
+      memcpy(arp_header_request->ar_tha, arp_header_src->ar_tha, sizeof(arp_header_request->ar_tha));
       arp_header_request->ar_tip = arp_header_src->ar_tip;
 
       sr_send_packet(sr, arp_reply, 42, irface->name);
