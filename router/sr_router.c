@@ -157,9 +157,9 @@ void sr_handle_arp(struct sr_instance* sr,
       arp_header_request->ar_tip = arp_header_src->ar_tip;
 
       /*construct ethernet header*/
-      ether_header_request->ether_type = sr_ethertype.ethertype_arp; 
-      memcpy(ether_header_request->ether_shost, irface->addr, sizeof(irface->addr)); 
-      memcpy(ether_header_request->ether_dhost, arp_header_src->ar_tha, sizeof(arp_header_request->ar_tha)); 
+      ether_header_request->ether_type = ethertype_arp;
+      memcpy(ether_header_request->ether_shost, ether_header_src->ether_dhost, sizeof(ether_header_src->ether_dhost)); 
+      memcpy(ether_header_request->ether_dhost, ether_header_src->ether_shost, sizeof(ether_header_src->ether_shost)); 
 
       sr_send_packet(sr, arp_reply, 42, irface->name);
 
