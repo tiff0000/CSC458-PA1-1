@@ -77,12 +77,12 @@ void sr_handlepacket(struct sr_instance* sr,
   assert(packet);
   assert(interface);
 
-  printf("size of eth header : %lu \n", sizeof(struct sr_ethernet_hdr));
   print_hdrs(packet, len);
   printf("*** -> Received packet of length %d \n",len);
  
   sr_ethernet_hdr_t *ethernet_header = (sr_ethernet_hdr_t *) packet;
   uint16_t ether_type = ntohs(ethernet_header->ether_type); 
+  printf("ETHERTYPE: %d \n", ether_type);
 
   struct sr_if *intface = sr_get_interface(sr, interface); 
   sr_print_if(intface);
@@ -92,7 +92,6 @@ void sr_handlepacket(struct sr_instance* sr,
   if((memcmp(ethernet_header->ether_shost, intface->addr, ETHER_ADDR_LEN) != 0) || (memcmp(ethernet_header->ether_dhost, broadcast_addr, ETHER_ADDR_LEN) != 0)){
     if (ether_type == 2054){
       printf("ARP REQUEST\n");
-      printf("WE MADE IT \n");
       sr_handle_arp(sr, packet, len, interface);
     } else if (ether_type == 2048) {
         printf("IP REQUEST\n");
@@ -109,26 +108,43 @@ void sr_handle_ip(struct sr_instance* sr,
   int min_length = sizeof(sr_ethernet_hdr_t);
 
   sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + min_length);
+
   struct sr_if *intface = sr_get_interface(sr, interface); 
 
   printf("PRINTING DESTINATION IP\n");
   print_addr_ip_int(ip_header->ip_dst);
+  print_addr_ip_int(intface->ip);
 
   if (intface->ip == ip_header->ip_dst) {
-    /*icmp protocl is 1*/ 
+    /*Packet is destined to US*/ 
+    printf("Packet is destined to us !!\n");
     if (ip_header->ip_p == 1){
-      /*icmp echo request*/
+      /*icmp echo request, send echo reply*/
       printf("ICMP echo request, send reply\n");
-      
+      handle_icmp(sr, 0, -1, packet, len, interface); 
     } else if ((ip_header->ip_p == 17) || (ip_header->ip_p == 6)){
       /*send port unreachable*/  
+      printf("PORT UNREACHABLE!!\n");
+      handle_icmp(sr, 3, 3, packet, len, interface); 
     }
   } else {
-    /*Not destined to me*/
-    /*check routing table*/
-      
-  }
+      /*Not destined to me*/
+      printf("Packet is NOT destined to us !!\n");
+      printf("Actual checksum: %d \n", ip_header->ip_sum);
+      uint16_t sum = cksum(ip_header, ip_header->ip_len); 
+      printf("cksum result: %d\n", ntohs(sum));
+      if (sum == ip_header->ip_sum){
+        ip_header->ip_ttl--;
+        ip_header->ip_sum = cksum(ip_header, 20);
+        /*Perform LPM*/
+          
 
+   
+      } else {
+        printf("Incorrect cksum\n");
+      }
+  }
+}
   /**if (len > min_length){
     packet meets min length requirement
     check checksum
@@ -138,7 +154,6 @@ void sr_handle_ip(struct sr_instance* sr,
   } else {
     printf("Packet is too small:(\n");
   }**/
-}
 
 void sr_handle_arp(struct sr_instance* sr,
         uint8_t * packet/* lent */,
@@ -169,8 +184,8 @@ void sr_handle_arp(struct sr_instance* sr,
       arp_header_request->ar_hrd = htons(1);
       arp_header_request->ar_pro = htons(2048);   
       arp_header_request->ar_hln = ETHER_ADDR_LEN;   
-      arp_header_request->ar_pln = 4;   
-      arp_header_request->ar_op = 2;
+      arp_header_request->ar_pln = 4;
+      arp_header_request->ar_op = htons(arp_op_reply);
       memcpy(arp_header_request->ar_sha, irface->addr, ETHER_ADDR_LEN);
       /*Just a pointer to a list^^, need to copy character per character*/
       arp_header_request->ar_sip = irface->ip;
@@ -178,9 +193,7 @@ void sr_handle_arp(struct sr_instance* sr,
       arp_header_request->ar_tip = arp_header_src->ar_sip;
 
       /*construct ethernet header*/
-      uint16_t ether_type = ntohs(ether_header_src->ether_type);
-
-      ether_header_request->ether_type = ether_type;
+      ether_header_request->ether_type = htons(ethertype_arp);
       memcpy(ether_header_request->ether_shost, irface->addr, ETHER_ADDR_LEN); 
       memcpy(ether_header_request->ether_dhost, ether_header_src->ether_shost, ETHER_ADDR_LEN); 
 
