@@ -22,8 +22,6 @@
 #include "sr_protocol.h"
 #include "sr_arpcache.h"
 #include "sr_utils.h"
-#define IP_BEGIN 14
-#define ARP_BEGIN 14
 
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
@@ -82,18 +80,15 @@ void sr_handlepacket(struct sr_instance* sr,
   print_hdrs(packet, len);
   printf("*** -> Received packet of length %d \n",len);
 
-  sr_ethernet_hdr_t *ethernet_header = (sr_ethernet_hdr_t *)packet;
-  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *)packet;
+  sr_ethernet_hdr_t *ethernet_header = (sr_ethernet_hdr_t *) packet;
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
 
   uint16_t ether_type = ntohs(ethernet_header->ether_type); 
-  int min_length = sizeof(sr_ethernet_hdr_t);
 
   if (ether_type == 2054){
-    /*ARP REQUEST*/
     printf("ARP REQUEST\n");
     sr_handle_arp(sr, packet, len, interface);
   } else if (ether_type == 2048) {
-      /*IP REQUEST*/
       printf("IP REQUEST\n");
       sr_handle_ip(sr, packet, len, interface);
   }
@@ -105,20 +100,37 @@ void sr_handle_ip(struct sr_instance* sr,
         char* interface/* lent */)
 {
   int min_length = sizeof(sr_ethernet_hdr_t);
-  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + IP_BEGIN);
+
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + min_length);
+  struct sr_if *intface = sr_get_interface(sr, interface); 
 
   printf("PRINTING DESTINATION IP\n");
   print_addr_ip_int(ip_header->ip_dst);
 
-  if (len > min_length){
-    /*packet meets min length requirement*/
-    /*check checksum*/
+  if (intface->ip == ip_header->ip_dst) {
+    /*icmp protocl is 1*/ 
+    if (ip_header->ip_p == 1){
+      /*icmp echo request*/
+      printf("ICMP echo request, send reply\n");
+      
+    } else if ((ip_header->ip_p == 17) || (ip_header->ip_p == 6)){
+      /*send port unreachable*/  
+    }
+  } else {
+    /*Not destined to me*/
+    /*check routing table*/
+      
+  }
+
+  /**if (len > min_length){
+    packet meets min length requirement
+    check checksum
     uint16_t sum = cksum(ip_header, 20);
     printf("cksum result: %d\n", ntohs(sum));
     printf("actual checksum : %d\n", ntohs(ip_header->ip_sum));
   } else {
     printf("Packet is too small:(\n");
-  }
+  }**/
 }
 
 void sr_handle_arp(struct sr_instance* sr,
@@ -127,7 +139,7 @@ void sr_handle_arp(struct sr_instance* sr,
         char* interface/* lent */)
 {
 
-  sr_arp_hdr_t *arp_header = (sr_arp_hdr_t *) (packet + ARP_BEGIN);
+  sr_arp_hdr_t *arp_header = (sr_arp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
   struct sr_if *irface = sr_get_interface(sr, interface); 
 
   if (arp_header->ar_tip == irface->ip){ 
@@ -190,4 +202,40 @@ void sr_handle_arp(struct sr_instance* sr,
  } else {
    /*Not destined to one our interfaces*/
  }
+}
+
+/** Handle all ICMP messages
+*/
+void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, unsigned int len, char* interface) {
+
+         struct sr_if *irface = sr_get_interface(sr, interface); 
+
+         /*Consruct packet to be sent*/
+         uint8_t *reply_pkt = malloc(sizeof(struct sr_icmp_hdr) + sizeof(struct sr_ethernet_hdr) + sizeof(sr_ip_hdr)); 
+
+         sr_ethernet_hdr * eth_hdr = (sr_ethernet_hdr *) reply_pkt;
+         sr_ip_hdr * ip_hdr = (sr_ip_hdr *) (reply_pkt + sizeof(sr_ip_hdr));
+         sr_icmp_hdr * icmp_hdr = (sr_icmp_hdr *) (reply_pkt + sizeof(struct sr_ethernet_hdr) + sizeof(sr_ip_hdr));
+
+         /*Packet received*/
+         sr_ethernet_hdr * eth_hdr_old = (sr_ethernet_hdr *) packet;
+         sr_ip_hdr * ip_hdr_old = (sr_ip_hdr *) (packet + sizeof(sr_ip_hdr));
+         sr_icmp_hdr * icmp_hdr_old = (sr_icmp_hdr *) (packet + sizeof(struct sr_ethernet_hdr) + sizeof(sr_ip_hdr));
+
+         icmp_hdr->icmp_type = type;
+         icmp_hdr->icmp_code = code;
+         icmp_hdr->icmp_sum = 0;
+
+         ip_hdr->ip_tos = 0;
+         ip_hdr->ip_len = htons(sizeof(icmp_hdr));
+         ip_hdr->ip_off = htons(0);
+         ip_hdr->ip_ttl = 64;
+         ip_hdr->ip_p = 1;
+         ip_hdr->ip_sum = 0;
+         ip_hdr->src = irface->ip;
+         ip_hdr->dst = ip_hdr_old->ip_src;
+
+         memcpy(eth_hdr->ether_shost, irface->ip , sizeof(irface->ip)); 
+         memcpy(eth_hdr->ether_dhost, eth_hdr_old->ether_shost, sizeof(eth_hdr_old->ether_shost)); 
+         eth_hdr->ether_type = htons(eth_hdr_old->ether_type);
 }
