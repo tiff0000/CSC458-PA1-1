@@ -23,8 +23,9 @@ void sr_arpcache_sweepreqs(struct sr_instance *sr) {
    */ 
 
    struct sr_arpreq *arp_request = sr->cache.requests;
-
+   printf("HANDLING ARP\n");
    while(arp_request != NULL) {
+     printf("NOT NULL\n");
      struct sr_arpreq * next_request = arp_request->next;
      handle_arpreq(sr, arp_request);
      arp_request = next_request;
@@ -64,6 +65,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
         sr_arpreq_destroy(&(sr->cache), sr_arp_req);
 
       } else {
+        printf("SENDING ARP REQUEST \n");
         /*Send arp request*/
         uint8_t *req_packet = malloc(sizeof(struct sr_arp_hdr) + sizeof(struct sr_ethernet_hdr));
         struct sr_arp_hdr *arp_hdr = (struct sr_arp_hdr *)(req_packet + sizeof(struct sr_ethernet_hdr));
@@ -75,7 +77,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
         memcpy(eth_hdr->ether_shost, irface->addr, ETHER_ADDR_LEN);
         memcpy(eth_hdr->ether_dhost, broadcst_addr, ETHER_ADDR_LEN);        
         
-        arp_hdr->ar_hrd = htons(1);
+        arp_hdr->ar_hrd = htons(0x1);
         arp_hdr->ar_pro = htons(2054); 
         arp_hdr->ar_hln = ETHER_ADDR_LEN;  
         arp_hdr->ar_pln = 4;  
@@ -83,7 +85,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
         arp_hdr->ar_sip = sr_arp_req->ip;
         memcpy(&arp_hdr->ar_sha, irface->addr, ETHER_ADDR_LEN);
         /*target mac is broadcast*/
-        memset(&arp_hdr->ar_tha, broadcst_ip, ETHER_ADDR_LEN); 
+        memcpy(&arp_hdr->ar_tha, broadcst_ip, ETHER_ADDR_LEN); 
         arp_hdr->ar_tip = sr_arp_req->ip; 
 
         sr_arp_req->sent = current_time;
@@ -91,6 +93,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
 
         sr_send_packet(sr, req_packet, 42, irface->name);
         free(req_packet);
+        return; /*not sure*/
       }
     } 
 }

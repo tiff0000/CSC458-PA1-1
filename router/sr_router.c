@@ -105,44 +105,60 @@ void sr_handle_ip(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */)
 {
-  int min_length = sizeof(sr_ethernet_hdr_t);
-
-  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + min_length);
-
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(struct sr_ethernet_hdr));
+  int min_length = sizeof(struct sr_ethernet_hdr);
   struct sr_if *intface = sr_get_interface(sr, interface); 
 
-  printf("PRINTING DESTINATION IP\n");
-  print_addr_ip_int(ip_header->ip_dst);
-  print_addr_ip_int(intface->ip);
+  if(ip_header->ip_ttl == 0) {
+    /*send icmp time exceeded*/
+    handle_icmp(sr, 11, 0, packet, len, interface); 
+  }
 
   if (intface->ip == ip_header->ip_dst) {
+    printf("Packet destined to us !!\n");
     /*Packet is destined to US*/ 
-    printf("Packet is destined to us !!\n");
     if (ip_header->ip_p == 1){
       /*icmp echo request, send echo reply*/
-      printf("ICMP echo request, send reply\n");
       handle_icmp(sr, 0, 0, packet, len, interface); 
     } else if ((ip_header->ip_p == 17) || (ip_header->ip_p == 6)){
       /*send port unreachable*/  
-      printf("PORT UNREACHABLE!!\n");
       handle_icmp(sr, 3, 3, packet, len, interface); 
+    } else {
+      /*DUNNO WHAT TO DO IN THIS CASE*/
     }
   } else {
       /*Not destined to me*/
       printf("Packet is NOT destined to us !!\n");
       printf("Actual checksum: %d \n", ip_header->ip_sum);
-      uint16_t sum = cksum(ip_header, ip_header->ip_len); 
+      uint16_t sum = cksum(ip_header, sizeof(struct sr_ip_hdr)); 
       printf("cksum result: %d\n", ntohs(sum));
-      if (sum == ip_header->ip_sum){
-        ip_header->ip_ttl--;
-        ip_header->ip_sum = cksum(ip_header, 20);
-        /*Perform LPM*/
-          
-
-   
-      } else {
-        printf("Incorrect cksum\n");
-      }
+      ip_header->ip_ttl--;
+      ip_header->ip_sum = 0x0;
+      /*ip_header->ip_sum = cksum(ip_header, min_length);*/
+      /*Perform LPM*/
+      /*struct sr_rt
+       struct in_addr dest  s_addr, in network byte order;
+       struct in_addr gw;
+       struct in_addr mask;
+       char   interface[sr_IFACE_NAMELEN];
+       struct sr_rt* next;*/             
+       struct sr_rt * rtable = sr->routing_table;
+       print_addr_ip_int(ntohl(ip_header->ip_dst));  
+       while(rtable) {
+         if((ip_header->ip_dst & rtable->mask.s_addr) == (rtable->mask.s_addr & rtable->dest.s_addr)){
+           printf("We got some match: %c \n", rtable->interface[3]);
+           int shifts = 0;
+           /*while(result != 0) {
+             result = result >> 1;
+             shifts++;
+           }*/
+           printf("matches %d \n", 32 - shifts);
+         }
+         /*printf("MASK: %s \n", inet_ntoa(rtable->mask)); 
+         printf("ACTUAL result: %d \n", (rtable->dest.s_addr)); 
+         printf("interface: %c \n",rtable->interface[3]);*/
+         rtable = rtable->next;
+       }
   }
 }
   /**if (len > min_length){
@@ -167,7 +183,6 @@ void sr_handle_arp(struct sr_instance* sr,
   sr_print_if(irface);
 
   if (arp_header->ar_tip == irface->ip){ 
-    printf("DESTINED TO ONE OF OUR ROUTER'S IPs\n");
     if (ntohs(arp_header->ar_op) == 1){
       printf("REQUEST\n");
       /*Construct ARP reply and send it back*/
@@ -181,7 +196,7 @@ void sr_handle_arp(struct sr_instance* sr,
       sr_arp_hdr_t *arp_header_src = (sr_arp_hdr_t*) (packet + sizeof(struct sr_ethernet_hdr));
       sr_ethernet_hdr_t *ether_header_src = (sr_ethernet_hdr_t*) packet;
       
-      arp_header_request->ar_hrd = htons(1);
+      arp_header_request->ar_hrd = htons(0x1);
       arp_header_request->ar_pro = htons(2048);   
       arp_header_request->ar_hln = ETHER_ADDR_LEN;   
       arp_header_request->ar_pln = 4;
@@ -198,6 +213,7 @@ void sr_handle_arp(struct sr_instance* sr,
       memcpy(ether_header_request->ether_dhost, ether_header_src->ether_shost, ETHER_ADDR_LEN); 
 
       sr_send_packet(sr, arp_reply, 42, interface);
+      return;/*not sure*/
 
     } else if (ntohs(arp_header->ar_op) == 0){
       printf("REPLY\n");
@@ -273,7 +289,7 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
          sr_ip_hdr_t * ip_hdr = (sr_ip_hdr_t *) (reply_pkt + sizeof(struct sr_ip_hdr));
 
          ip_hdr->ip_tos = htons(0);
-         ip_hdr->ip_len = htons(sizeof(icmp_hdr));
+         ip_hdr->ip_len = htons(total_length - 18);
          ip_hdr->ip_off = htons(0);
          ip_hdr->ip_ttl = 64;
          ip_hdr->ip_p = 1;
