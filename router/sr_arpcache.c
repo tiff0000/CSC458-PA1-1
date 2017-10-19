@@ -49,6 +49,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
     current_time = time(NULL);
    
     uint8_t broadcst_addr[ETHER_ADDR_LEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    uint8_t broadcst_ip[ETHER_ADDR_LEN] = {0, 0, 0, 0, 0, 0};
     
     if (current_time - sr_arp_req->sent > 1.0) {
       if (sr_arp_req->sent >= 5){
@@ -82,14 +83,13 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
         arp_hdr->ar_sip = sr_arp_req->ip;
         memcpy(&arp_hdr->ar_sha, irface->addr, ETHER_ADDR_LEN);
         /*target mac is broadcast*/
-        memset(&arp_hdr->ar_tha, 0, ETHER_ADDR_LEN); 
+        memset(&arp_hdr->ar_tha, broadcst_ip, ETHER_ADDR_LEN); 
         arp_hdr->ar_tip = sr_arp_req->ip; 
 
         sr_arp_req->sent = current_time;
         sr_arp_req->times_sent++;
 
         sr_send_packet(sr, req_packet, 42, irface->name);
-
         free(req_packet);
       }
     } 

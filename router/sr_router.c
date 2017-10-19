@@ -121,7 +121,7 @@ void sr_handle_ip(struct sr_instance* sr,
     if (ip_header->ip_p == 1){
       /*icmp echo request, send echo reply*/
       printf("ICMP echo request, send reply\n");
-      handle_icmp(sr, 0, -1, packet, len, interface); 
+      handle_icmp(sr, 0, 0, packet, len, interface); 
     } else if ((ip_header->ip_p == 17) || (ip_header->ip_p == 6)){
       /*send port unreachable*/  
       printf("PORT UNREACHABLE!!\n");
@@ -211,7 +211,7 @@ void sr_handle_arp(struct sr_instance* sr,
           struct sr_packet * next_request = pkt_list->next;
           sr_ethernet_hdr_t *ethernet_hdr = (sr_ethernet_hdr_t *) (pkt_list->buf); 
 
-          /*ethernet_hdr->ether_dhost = arp_header->ar_sha;*/
+          memcpy(&(ethernet_hdr->ether_dhost), &(arp_header->ar_sha), ETHER_ADDR_LEN); 
 
           sr_send_packet(sr, pkt_list->buf, pkt_list->len, pkt_list->iface);
           pkt_list = next_request;
@@ -219,11 +219,14 @@ void sr_handle_arp(struct sr_instance* sr,
         sr_arpcache_destroy(&sr->cache);
       } else{
        /*IP is not in the request queue*/
+       printf("IP not in request queue\n");
       } 
     } else {
       /*Invalid OP Code*/
+      printf("INVALID OP CODE\n");
     } 
    } else{
+      /*Not destined to one of our interfaces*/      
       printf("NOT DESTINED TO ONE OF OUR IP's interfaces\n");
    }
 }
@@ -234,32 +237,55 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
 
          struct sr_if *irface = sr_get_interface(sr, interface); 
 
-         /*Consruct packet to be sent*/
-         uint8_t *reply_pkt = malloc(sizeof(struct sr_icmp_hdr) + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr)); 
-
-         sr_ethernet_hdr_t * eth_hdr = (sr_ethernet_hdr_t *) reply_pkt;
-         sr_ip_hdr_t * ip_hdr = (sr_ip_hdr_t *) (reply_pkt + sizeof(struct sr_ip_hdr));
-         sr_icmp_hdr_t * icmp_hdr = (sr_icmp_hdr_t *) (reply_pkt + sizeof(struct sr_ethernet_hdr) + sizeof( struct sr_ip_hdr));
-
-         /*Packet received*/
+         /*Packet the router received*/
          sr_ethernet_hdr_t * eth_hdr_old = (sr_ethernet_hdr_t *) packet;
          sr_ip_hdr_t * ip_hdr_old = (sr_ip_hdr_t *) (packet + sizeof(struct sr_ip_hdr));
          sr_icmp_hdr_t * icmp_hdr_old = (sr_icmp_hdr_t *) (packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr));
+         
+         /*Packet we're sending; over-allocate in case it's a type3 icmp header*/
+         uint8_t *reply_pkt = malloc(sizeof(struct sr_icmp_t3_hdr) + sizeof(struct sr_icmp_hdr) + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr)); 
+         unsigned int total_length = 0;
 
-         icmp_hdr->icmp_type = type;
-         icmp_hdr->icmp_code = code;
-         icmp_hdr->icmp_sum = 0;
+         if (type == 3 || type == 11) {
+           /*Consruct packet to be sent*/
+           sr_icmp_t3_hdr_t * icmp_hdr_t3 = (sr_icmp_t3_hdr_t *) (reply_pkt + sizeof(struct sr_ethernet_hdr) + sizeof( struct sr_ip_hdr));
+
+           icmp_hdr_t3->icmp_type = type;
+           icmp_hdr_t3->icmp_code = code;
+           icmp_hdr_t3->icmp_sum = 0x0; 
+           icmp_hdr_t3->icmp_sum = cksum (icmp_hdr_t3, ICMP_DATA_SIZE);
+           icmp_hdr_t3->unused = htons(0);
+           icmp_hdr_t3->next_mtu = 0x0;
+           memcpy(icmp_hdr_t3->data, icmp_hdr_old, ICMP_DATA_SIZE);
+           total_length = sizeof(struct sr_icmp_t3_hdr) + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr);
+
+         } else {
+           sr_icmp_hdr_t * icmp_hdr = (sr_icmp_hdr_t *) (reply_pkt + sizeof(struct sr_ethernet_hdr) + sizeof( struct sr_ip_hdr));
+
+           icmp_hdr->icmp_type = type;
+           icmp_hdr->icmp_code = code;
+           icmp_hdr->icmp_sum = 0x0;
+           icmp_hdr->icmp_sum = cksum (icmp_hdr, ICMP_DATA_SIZE); 
+           total_length = sizeof(struct sr_icmp_hdr) + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr);
+         }
+
+         sr_ethernet_hdr_t * eth_hdr = (sr_ethernet_hdr_t *) reply_pkt;
+         sr_ip_hdr_t * ip_hdr = (sr_ip_hdr_t *) (reply_pkt + sizeof(struct sr_ip_hdr));
 
          ip_hdr->ip_tos = htons(0);
          ip_hdr->ip_len = htons(sizeof(icmp_hdr));
          ip_hdr->ip_off = htons(0);
          ip_hdr->ip_ttl = 64;
          ip_hdr->ip_p = 1;
-         ip_hdr->ip_sum = 0;
+         ip_hdr->ip_sum = 0x0;
+         ip_hdr->ip_sum = cksum(ip_hdr, 20);
          ip_hdr->ip_src = irface->ip;
          ip_hdr->ip_dst = ip_hdr_old->ip_src;
 
          memcpy(&(eth_hdr->ether_shost), &(irface->ip), ETHER_ADDR_LEN); 
          memcpy(&(eth_hdr->ether_dhost), &(eth_hdr_old->ether_shost), ETHER_ADDR_LEN); 
          eth_hdr->ether_type = htons(eth_hdr_old->ether_type);
+         
+         sr_send_packet(sr, reply_pkt, total_length, interface);
+         free(reply_pkt);
 }
