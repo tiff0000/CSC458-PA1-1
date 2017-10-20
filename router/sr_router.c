@@ -82,7 +82,6 @@ void sr_handlepacket(struct sr_instance* sr,
  
   sr_ethernet_hdr_t *ethernet_header = (sr_ethernet_hdr_t *) packet;
   uint16_t ether_type = ntohs(ethernet_header->ether_type); 
-  printf("ETHERTYPE: %d \n", ether_type);
 
   struct sr_if *intface = sr_get_interface(sr, interface); 
   sr_print_if(intface);
@@ -105,8 +104,8 @@ void sr_handle_ip(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */)
 {
+  sr_ethernet_hdr_t *ethernet_header_send = (sr_ethernet_hdr_t*) packet;
   sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(struct sr_ethernet_hdr));
-  int min_length = sizeof(struct sr_ethernet_hdr);
   struct sr_if *intface = sr_get_interface(sr, interface); 
 
   if(ip_header->ip_ttl == 0) {
@@ -134,42 +133,53 @@ void sr_handle_ip(struct sr_instance* sr,
       printf("cksum result: %d\n", ntohs(sum));
       ip_header->ip_ttl--;
       ip_header->ip_sum = 0x0;
-      /*ip_header->ip_sum = cksum(ip_header, min_length);*/
+      ip_header->ip_sum = cksum(ip_header, sizeof(struct sr_ip_hdr));
+
       /*Perform LPM*/
-      /*struct sr_rt
-       struct in_addr dest  s_addr, in network byte order;
-       struct in_addr gw;
-       struct in_addr mask;
-       char   interface[sr_IFACE_NAMELEN];
-       struct sr_rt* next;*/             
-       struct sr_rt * rtable = sr->routing_table;
-       print_addr_ip_int(ntohl(ip_header->ip_dst));  
-       while(rtable) {
-         if((ip_header->ip_dst & rtable->mask.s_addr) == (rtable->mask.s_addr & rtable->dest.s_addr)){
-           printf("We got some match: %c \n", rtable->interface[3]);
-           int shifts = 0;
-           /*while(result != 0) {
-             result = result >> 1;
-             shifts++;
-           }*/
-           printf("matches %d \n", 32 - shifts);
-         }
-         /*printf("MASK: %s \n", inet_ntoa(rtable->mask)); 
-         printf("ACTUAL result: %d \n", (rtable->dest.s_addr)); 
-         printf("interface: %c \n",rtable->interface[3]);*/
-         rtable = rtable->next;
-       }
+      struct sr_rt * rtable = sr->routing_table;
+      int match = 0;
+      uint32_t dest_ip_if;
+      struct sr_if *next_hop_iface = malloc(sizeof(struct sr_if)); 
+      struct in_addr gateway; 
+
+      while(rtable) {
+        if((ip_header->ip_dst & rtable->mask.s_addr) == (rtable->dest.s_addr)){
+          printf("We got some match: %c \n", rtable->interface[3]);
+          dest_ip_if = rtable->dest.s_addr; 
+          next_hop_iface = sr_get_interface(sr, rtable->interface);
+          gateway.s_addr = rtable->mask.s_addr; 
+          match = 1;
+        }
+        rtable = rtable->next;
+      }
+        
+      if(match == 1) {
+      /*check arp cache*/
+      /* Checks if an IP->MAC mapping is in the cache. IP is in network byte order. 
+      You must free the returned structure if it is not NULL. */
+        struct sr_arpentry * cache_entry =  sr_arpcache_lookup(&(sr->cache), dest_ip_if); 
+        memcpy(ethernet_header_send->ether_shost, next_hop_iface->addr, ETHER_ADDR_LEN);
+
+        if (cache_entry){
+          /*send frame to next_hop*/
+          printf("printing out next hop addr\n");
+          print_addr_ip_int(next_hop_iface->ip);
+          memcpy(ethernet_header_send->ether_dhost, cache_entry->mac , ETHER_ADDR_LEN); 
+          sr_send_packet(sr, packet, sizeof(packet), next_hop_iface->name); 
+          free(cache_entry);
+        } else {
+          /*add to arp queue*/
+
+          printf("printing out next hop addr, to queue\n");
+          print_addr_ip_int(next_hop_iface->ip);
+          sr_arpcache_queuereq(&(sr->cache), gateway.s_addr , packet, len, next_hop_iface->name);
+        }
+      } else{
+        /*ICMP network unreachable*/
+        handle_icmp(sr, 3, 0, packet, len, interface);
+      }
   }
 }
-  /**if (len > min_length){
-    packet meets min length requirement
-    check checksum
-    uint16_t sum = cksum(ip_header, 20);
-    printf("cksum result: %d\n", ntohs(sum));
-    printf("actual checksum : %d\n", ntohs(ip_header->ip_sum));
-  } else {
-    printf("Packet is too small:(\n");
-  }**/
 
 void sr_handle_arp(struct sr_instance* sr,
         uint8_t * packet/* lent */,
