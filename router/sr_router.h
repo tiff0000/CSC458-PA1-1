@@ -78,5 +78,6 @@ void sr_print_if_list(struct sr_instance* );
 
 /* Handle ICMP requests */
 void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, unsigned int len, char* interface);
+void handle_icmp_type3(struct sr_instance *sr, int type, int code,  uint8_t * packet, unsigned int len, char* interface);
 
 #endif /* SR_ROUTER_H */

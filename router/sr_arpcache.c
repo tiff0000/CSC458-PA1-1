@@ -24,11 +24,10 @@ void sr_arpcache_sweepreqs(struct sr_instance *sr) {
 
    struct sr_arpreq *arp_request = sr->cache.requests;
    printf("HANDLING ARP\n");
-   while(arp_request != NULL) {
+   while(arp_request) {
      printf("NOT NULL\n");
-     struct sr_arpreq * next_request = arp_request->next;
      handle_arpreq(sr, arp_request);
-     arp_request = next_request;
+     arp_request = arp_request->next;
    }
 }
 
@@ -58,9 +57,8 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
         struct sr_packet *curr_packet = sr_arp_req->packets;
 
         while(curr_packet != NULL) {
-           struct sr_packet *next_packet = sr_arp_req->packets->next;
-           handle_icmp(sr, 3, 1, curr_packet->buf, curr_packet->len, curr_packet->iface);
-           curr_packet = next_packet;
+           handle_icmp_type3(sr, 3, 1, curr_packet->buf, curr_packet->len, curr_packet->iface);
+           curr_packet = curr_packet->next;
         }
         sr_arpreq_destroy(&(sr->cache), sr_arp_req);
 
@@ -77,23 +75,22 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
         memcpy(eth_hdr->ether_shost, irface->addr, ETHER_ADDR_LEN);
         memcpy(eth_hdr->ether_dhost, broadcst_addr, ETHER_ADDR_LEN);        
         
-        arp_hdr->ar_hrd = htons(0x1);
-        arp_hdr->ar_pro = htons(2054); 
+        arp_hdr->ar_hrd = arp_hrd_ethernet;
+        arp_hdr->ar_pro = htons(ethertype_ip); 
         arp_hdr->ar_hln = ETHER_ADDR_LEN;  
         arp_hdr->ar_pln = 4;  
         arp_hdr->ar_op = htons(arp_op_request);  
-        arp_hdr->ar_sip = sr_arp_req->ip;
+        arp_hdr->ar_sip = irface->ip;
+        arp_hdr->ar_tip = sr_arp_req->ip; 
         memcpy(&arp_hdr->ar_sha, irface->addr, ETHER_ADDR_LEN);
         /*target mac is broadcast*/
-        memcpy(&arp_hdr->ar_tha, broadcst_ip, ETHER_ADDR_LEN); 
-        arp_hdr->ar_tip = sr_arp_req->ip; 
+        memcpy(&arp_hdr->ar_tha, broadcst_addr, ETHER_ADDR_LEN); 
 
-        sr_arp_req->sent = current_time;
+        sr_arp_req->sent = time(NULL);
         sr_arp_req->times_sent++;
 
         sr_send_packet(sr, req_packet, 42, irface->name);
         free(req_packet);
-        return; /*not sure*/
       }
     } 
 }
