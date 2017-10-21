@@ -278,38 +278,39 @@ void handle_icmp_type3(struct sr_instance *sr, int type, int code,  uint8_t * pa
          sr_ethernet_hdr_t * eth_hdr = (sr_ethernet_hdr_t *) reply_pkt;
          sr_ip_hdr_t * ip_hdr = (sr_ip_hdr_t *) (reply_pkt + sizeof(struct sr_ethernet_hdr));
 
+         memcpy(&(eth_hdr->ether_shost), &(irface->addr), ETHER_ADDR_LEN);
+         memcpy(&(eth_hdr->ether_dhost), &(eth_hdr_old->ether_shost), ETHER_ADDR_LEN);
+         eth_hdr->ether_type = htons(ethertype_ip);
+
          ip_hdr->ip_tos = htons(0);
          ip_hdr->ip_v = 0x4;
-         ip_hdr->ip_hl = 0x4;
-	 ip_hdr->ip_len = htons(56);
-         ip_hdr->ip_id = htons(56);
+         ip_hdr->ip_hl = 5;
+	 ip_hdr->ip_len = htons(sizeof(struct sr_icmp_t3_hdr) + sizeof(struct sr_ip_hdr));
+         ip_hdr->ip_id = 0; 
          ip_hdr->ip_ttl = 64;
          ip_hdr->ip_off = htons(IP_DF);
          ip_hdr->ip_p = ip_protocol_icmp;
          ip_hdr->ip_src = irface->ip;
          ip_hdr->ip_dst = ip_hdr_old->ip_src;
-         ip_hdr->ip_sum = 0x0;
+         ip_hdr->ip_sum = 0;
    
          /*Consruct packet to be sent*/
          sr_icmp_t3_hdr_t * icmp_hdr_t3 = (sr_icmp_t3_hdr_t *) (reply_pkt + sizeof(struct sr_ethernet_hdr) + sizeof( struct sr_ip_hdr));
 
          icmp_hdr_t3->icmp_type = type;
-         icmp_hdr_t3->unused = 0x0;
+         icmp_hdr_t3->unused = 0;
          icmp_hdr_t3->next_mtu = 0;
          icmp_hdr_t3->icmp_code = code;
-         memcpy(&(icmp_hdr_t3->data), ip_hdr_old, 8);
-         icmp_hdr_t3->icmp_sum = 0x0;
+         memcpy(icmp_hdr_t3->data, ip_hdr_old, 28);
+         icmp_hdr_t3->icmp_sum = 0;
 
          icmp_hdr_t3->icmp_sum = cksum(icmp_hdr_t3, sizeof(struct sr_icmp_t3_hdr));
+         printf("SIZE OF STRUCT: %lu, SIZEOF _T: %lu \n", sizeof(struct sr_icmp_t3_hdr), sizeof(sr_icmp_t3_hdr_t));
          ip_hdr->ip_sum = cksum(ip_hdr, sizeof(struct sr_ip_hdr));
 
-         memcpy(&(eth_hdr->ether_shost), &(irface->addr), ETHER_ADDR_LEN); 
-         memcpy(&(eth_hdr->ether_dhost), &(eth_hdr_old->ether_shost), ETHER_ADDR_LEN); 
-         eth_hdr->ether_type = htons(ethertype_ip);
-         
          printf("SENDING TYPE III IN HANDLE ICMP\n");
          print_hdr_ip(reply_pkt);
-         sr_send_packet(sr, reply_pkt, 70, interface);
+         sr_send_packet(sr, reply_pkt, sizeof(struct sr_icmp_t3_hdr) + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr), interface);
          free(reply_pkt);
 }
 
