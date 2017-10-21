@@ -23,9 +23,7 @@ void sr_arpcache_sweepreqs(struct sr_instance *sr) {
    */ 
 
    struct sr_arpreq *arp_request = sr->cache.requests;
-   printf("HANDLING ARP\n");
    while(arp_request) {
-     printf("NOT NULL\n");
      handle_arpreq(sr, arp_request);
      arp_request = arp_request->next;
    }
@@ -63,7 +61,6 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
         sr_arpreq_destroy(&(sr->cache), sr_arp_req);
 
       } else {
-        printf("SENDING ARP REQUEST \n");
         /*Send arp request*/
         uint8_t *req_packet = malloc(sizeof(struct sr_arp_hdr) + sizeof(struct sr_ethernet_hdr));
         struct sr_arp_hdr *arp_hdr = (struct sr_arp_hdr *)(req_packet + sizeof(struct sr_ethernet_hdr));
