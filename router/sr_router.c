@@ -110,7 +110,7 @@ void sr_handle_ip(struct sr_instance* sr,
 
   print_hdr_ip(packet);
 
-  if(ip_header->ip_ttl <= 1) {
+  if(ip_header->ip_ttl < 1) {
     /*send icmp time exceeded*/
     printf("TIME EXCEEDED\n");
     handle_icmp_type3(sr, 11, 0, packet, len, interface); 
@@ -123,7 +123,7 @@ void sr_handle_ip(struct sr_instance* sr,
       /*icmp echo request, send echo reply*/
       printf("ECHO REPLY\n");
       handle_icmp(sr, 0, 0, packet, len, interface); 
-    } else if ((ip_header->ip_p == 0x17) || (ip_header->ip_p == 0x6)){
+    } else{
       /*send port unreachable*/  
       printf("PORT unreachable\n");
       handle_icmp_type3(sr, 3, 3, packet, len, interface); 
@@ -271,9 +271,6 @@ void handle_icmp_type3(struct sr_instance *sr, int type, int code,  uint8_t * pa
          sr_ip_hdr_t * ip_hdr_old = (sr_ip_hdr_t *) (packet + sizeof(struct sr_ethernet_hdr));
          
          uint8_t *reply_pkt = malloc(sizeof(struct sr_icmp_t3_hdr) + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr)); 
-         unsigned int total_length;
-
-         total_length = sizeof(struct sr_icmp_t3_hdr) + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr);
 
          sr_ethernet_hdr_t * eth_hdr = (sr_ethernet_hdr_t *) reply_pkt;
          sr_ip_hdr_t * ip_hdr = (sr_ip_hdr_t *) (reply_pkt + sizeof(struct sr_ethernet_hdr));
