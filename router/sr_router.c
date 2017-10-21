@@ -119,7 +119,6 @@ void sr_handle_ip(struct sr_instance* sr,
     }
     /*dunno what to do here*/ 
   } else {
-       
       /*Not destined to me*/
       ip_header->ip_ttl--;
       ip_header->ip_sum = 0x0;
@@ -129,16 +128,24 @@ void sr_handle_ip(struct sr_instance* sr,
       int match = 0;
       struct sr_if *next_hop_iface = malloc(sizeof(struct sr_if)); 
       uint32_t gateway = NULL; 
-
+      uint32_t old = 0;
+ 
       while(rtable) {
-        if((ip_header->ip_dst & rtable->mask.s_addr) == (rtable->dest.s_addr)){
-          gateway = rtable->gw.s_addr; 
+        uint32_t result = (ip_header->ip_dst ^ rtable->dest.s_addr) & rtable->mask.s_addr;
+        printf("Result : %d \n", result);
+        printf("intface: %c \n", rtable->interface[3]);
+        if (result <= old) {
+          old = result;
+          printf("LONGEST  MATCH IS CURRENTLY: %c \n", rtable->interface[3]);
           memcpy(next_hop_iface, sr_get_interface(sr, rtable->interface), sizeof(struct sr_if));
+          gateway = rtable->gw.s_addr;
           match = 1;
         }
         rtable = rtable->next;
       }
-        
+
+      sr_print_if(next_hop_iface);
+
       if(match == 1) {
       /*check arp cache*/
       /* Checks if an IP->MAC mapping is in the cache. IP is in network byte order. 
