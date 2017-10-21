@@ -51,7 +51,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
     uint8_t broadcst_addr[ETHER_ADDR_LEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     uint8_t broadcst_ip[ETHER_ADDR_LEN] = {0, 0, 0, 0, 0, 0};
     
-    if (current_time - sr_arp_req->sent > 1.0) {
+    if (difftime(current_time, sr_arp_req->sent) >= 1.0) {
       if (sr_arp_req->sent >= 5){
 
         struct sr_packet *curr_packet = sr_arp_req->packets;
@@ -71,23 +71,23 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
 
         struct sr_if *irface = sr_get_interface(sr, sr_arp_req->packets->iface);         
 
-        eth_hdr->ether_type = htons(ethertype_arp);
-        memcpy(eth_hdr->ether_shost, irface->addr, ETHER_ADDR_LEN);
-        memcpy(eth_hdr->ether_dhost, broadcst_addr, ETHER_ADDR_LEN);        
-        
-        arp_hdr->ar_hrd = arp_hrd_ethernet;
+        arp_hdr->ar_hrd = htons(arp_hrd_ethernet);
         arp_hdr->ar_pro = htons(ethertype_ip); 
-        arp_hdr->ar_hln = ETHER_ADDR_LEN;  
+        arp_hdr->ar_hln = ETHER_ADDR_LEN;
         arp_hdr->ar_pln = 4;  
         arp_hdr->ar_op = htons(arp_op_request);  
         arp_hdr->ar_sip = irface->ip;
         arp_hdr->ar_tip = sr_arp_req->ip; 
         memcpy(&arp_hdr->ar_sha, irface->addr, ETHER_ADDR_LEN);
         /*target mac is broadcast*/
-        memcpy(&arp_hdr->ar_tha, broadcst_addr, ETHER_ADDR_LEN); 
+        memcpy(&arp_hdr->ar_tha, broadcst_ip, ETHER_ADDR_LEN); 
 
         sr_arp_req->sent = time(NULL);
         sr_arp_req->times_sent++;
+
+        eth_hdr->ether_type = htons(ethertype_arp);
+        memcpy(eth_hdr->ether_shost, irface->addr, ETHER_ADDR_LEN);
+        memcpy(eth_hdr->ether_dhost, broadcst_addr, ETHER_ADDR_LEN);
 
         sr_send_packet(sr, req_packet, 42, irface->name);
         free(req_packet);
