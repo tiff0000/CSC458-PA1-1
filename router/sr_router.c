@@ -195,8 +195,9 @@ void sr_handle_arp(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */)
 {
-
-  sr_arp_hdr_t *arp_header = (sr_arp_hdr_t *) (packet + sizeof(struct sr_ethernet_hdr));
+  /*Source ethernet/arp header*/
+  sr_ethernet_hdr_t *ether_header_src = (sr_ethernet_hdr_t*) packet;
+  sr_arp_hdr_t *arp_header_src = (sr_arp_hdr_t *) (packet + 14);
   struct sr_if *irface = sr_get_interface(sr, interface);
 
   if (arp_header->ar_tip == irface->ip){ 
@@ -204,18 +205,14 @@ void sr_handle_arp(struct sr_instance* sr,
       /*Construct ARP reply and send it back*/
       /*New packet: 28 (for arp header) + 14 (for ethernet header)*/
 
-      uint8_t *arp_reply = malloc(sizeof(struct sr_arp_hdr) + sizeof(struct sr_ethernet_hdr)); 
-      sr_arp_hdr_t *arp_header_request = (sr_arp_hdr_t*) (arp_reply + sizeof(struct sr_ethernet_hdr));
+      uint8_t *arp_reply = malloc(42); 
+      sr_arp_hdr_t *arp_header_request = (sr_arp_hdr_t*) (arp_reply + 14);
       sr_ethernet_hdr_t *ether_header_request = (sr_ethernet_hdr_t*) arp_reply;
-
-      /*Source ethernet/arp header*/
-      sr_arp_hdr_t *arp_header_src = (sr_arp_hdr_t*) (packet + sizeof(struct sr_ethernet_hdr));
-      sr_ethernet_hdr_t *ether_header_src = (sr_ethernet_hdr_t*) packet;
       
       arp_header_request->ar_hrd = htons(arp_hrd_ethernet);
       arp_header_request->ar_pro = htons(ethertype_ip); 
       arp_header_request->ar_hln = ETHER_ADDR_LEN; 
-      arp_header_request->ar_pln = arp_header_src->ar_pln; 
+      arp_header_request->ar_pln = 4; 
       arp_header_request->ar_op = htons(arp_op_reply);
       memcpy(arp_header_request->ar_sha, irface->addr, ETHER_ADDR_LEN);
       memcpy(arp_header_request->ar_tha, arp_header_src->ar_sha, ETHER_ADDR_LEN);
@@ -228,13 +225,16 @@ void sr_handle_arp(struct sr_instance* sr,
       memcpy(ether_header_request->ether_shost, irface->addr, ETHER_ADDR_LEN); 
       memcpy(ether_header_request->ether_dhost, ether_header_src->ether_shost, ETHER_ADDR_LEN); 
 
-      sr_send_packet(sr, arp_reply, sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_arp_hdr), interface);
+      sr_send_packet(sr, arp_reply, 42, interface);
 
       return;
 
     } else if (ntohs(arp_header->ar_op) == 2){
       /*cache it, go through request queue and send outstanding packets*/
-      struct sr_arpreq *request = sr_arpcache_insert(&sr->cache, arp_header->ar_sha, arp_header->ar_sip);
+      unsigned char mac_addr[ETHER_ADDR_LEN];
+	
+      memcpy(mac_addr, arp_header_src->ar_sha, ETHER_ADDR_LEN);
+      struct sr_arpreq *request = sr_arpcache_insert(&sr->cache, mac_addr, arp_header_src->ar_sip);
 
       if (request) {
         struct sr_packet *pkt_list = request->packets;
@@ -242,22 +242,14 @@ void sr_handle_arp(struct sr_instance* sr,
         while(pkt_list != NULL) {
           sr_ethernet_hdr_t *ethernet_hdr = (sr_ethernet_hdr_t *) (pkt_list->buf); 
 
-          memcpy(&(ethernet_hdr->ether_dhost), &(arp_header->ar_sha), ETHER_ADDR_LEN); 
+          memcpy(&(ethernet_hdr->ether_dhost), mac_addr, ETHER_ADDR_LEN); 
 
           sr_send_packet(sr, pkt_list->buf, pkt_list->len, pkt_list->iface);
           pkt_list = pkt_list->next;;
         }
         sr_arpreq_destroy(&(sr->cache), request);
-      } else{
-       /*IP is not in the request queue*/
       } 
-    } else {
-      /*Invalid OP Code*/
-      return;
     } 
-   } else{
-      /*Not destined to one of our interfaces*/      
-      return;
    }
 }
 
@@ -330,7 +322,7 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
 
          ip_hdr->ip_v = 0x4;
          ip_hdr->ip_hl = 0x4;
-         ip_hdr->ip_tos = htons(0);
+         ip_hdr->ip_tos = 0x0;
          ip_hdr->ip_len = htons(70 - len);
          ip_hdr->ip_id = htons(70 - len);
          ip_hdr->ip_ttl = 64;
@@ -342,7 +334,7 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
   
          icmp_hdr->icmp_type = type;
          icmp_hdr->icmp_code = code;
-         icmp_hdr->icmp_sum = 0x0;
+         icmp_hdr->icmp_sum = 0;
 
          /*as per RFC792, data received in the echo message must be returned in the echo reply message*/
          memcpy(icmp_hdr + 4, ip_hdr_old + sizeof(struct sr_icmp_hdr) + 4, len -  sizeof(struct sr_icmp_hdr) - 4);
