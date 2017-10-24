@@ -27,6 +27,8 @@ void sr_arpcache_sweepreqs(struct sr_instance *sr) {
      handle_arpreq(sr, arp_request);
      arp_request = arp_request->next;
    }
+
+   return;
 }
 
 void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) { 
@@ -51,7 +53,6 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
     
     if (difftime(current_time, sr_arp_req->sent) >= 1.0) {
       if (sr_arp_req->sent >= 5){
-
         struct sr_packet *curr_packet = sr_arp_req->packets;
 
         while(curr_packet != NULL) {
@@ -88,8 +89,10 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
 
         sr_send_packet(sr, req_packet, 42, irface->name);
         free(req_packet);
+        return;
       }
     } 
+    return;
 }
 /* You should not need to touch the rest of this code. */
 
