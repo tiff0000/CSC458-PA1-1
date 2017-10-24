@@ -138,18 +138,20 @@ void sr_handle_ip(struct sr_instance* sr,
       ip_header->ip_sum = cksum(ip_header, sizeof(struct sr_ip_hdr));
       /*Perform LPM*/
       struct sr_rt * rtable = sr->routing_table;
-      int match = 0;
       struct sr_if *next_hop_iface = malloc(sizeof(struct sr_if)); 
       uint32_t gateway = NULL; 
       
+      struct sr_rt *closestMatch = NULL; 
       while(rtable) {
-	 if (!(((ip_header->ip_dst ^ rtable->dest.s_addr) & rtable->mask.s_addr) & htonl(0xFFFFFFFFu << (8)))){
-          memcpy(next_hop_iface, sr_get_interface(sr, rtable->interface), sizeof(struct sr_if));
-          sr_print_if(next_hop_iface);
-          gateway = rtable->gw.s_addr;
-          match = 1;
-         }
-         rtable = rtable->next;
+	if ((ip_header->ip_dst & rtable->mask.s_addr) == (rtable->dest.s_addr & rtable->mask.s_addr)) {
+	  if (closestMatch == NULL || (rtable->mask.s_addr > closestMatch->mask.s_addr)) {
+            gateway = rtable->mask.s_addr;
+	    closestMatch = rtable;
+       	  }
+        }
+        rtable = rtable->next;
+      }
+        
         /**uint32_t result = ((ip_header->ip_dst ^ rtable->dest.s_addr) & rtable->mask.s_addr);
         printf("Result : %d \n", result);
         printf("intface: %c \n", rtable->interface[3]);
@@ -160,13 +162,12 @@ void sr_handle_ip(struct sr_instance* sr,
           sr_print_if(next_hop_iface);
           gateway = rtable->gw.s_addr;
           match = 1;**/
-      }
-
-      if(match == 1) {
+      if(closestMatch != NULL) {
       /*check arp cache*/
       /* Checks if an IP->MAC mapping is in the cache. IP is in network byte order. 
       You must free the returned structure if it is not NULL. */
         /*struct sr_arpentry * cache_entry =  sr_arpcache_lookup(&(sr->cache), ip_header->ip_dst);*/ 
+        memcpy(next_hop_iface, sr_get_interface(sr, closestMatch->interface), sizeof(struct sr_if));
         struct sr_arpentry * cache_entry =  sr_arpcache_lookup(&(sr->cache), ip_header->ip_dst);
         memcpy(ethernet_header_send->ether_shost, next_hop_iface->addr, ETHER_ADDR_LEN);
 
