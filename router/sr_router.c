@@ -88,9 +88,9 @@ void sr_handlepacket(struct sr_instance* sr,
   uint8_t broadcast_addr[ETHER_ADDR_LEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}; 
   /**check if our router is the dest or if it's a broadcast addr**/
   if((memcmp(ethernet_header->ether_shost, intface->addr, ETHER_ADDR_LEN) != 0) || (memcmp(ethernet_header->ether_dhost, broadcast_addr, ETHER_ADDR_LEN) != 0)){
-    if (ethernet_header->ether_type == ntohs(ethertype_arp)){
+    if (ethernet_header->ether_type == htons(ethertype_arp)){
       sr_handle_arp(sr, packet, len, interface);
-    } else if (ethernet_header->ether_type == ntohs(ethertype_ip)) {
+    } else if (ethernet_header->ether_type == htons(ethertype_ip)) {
         sr_handle_ip(sr, packet, len, interface);
     }
   }
@@ -102,7 +102,8 @@ void sr_handle_ip(struct sr_instance* sr,
         char* interface/* lent */)
 {
   sr_ethernet_hdr_t *ethernet_header_send = (sr_ethernet_hdr_t*) packet;
-  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(struct sr_ethernet_hdr));
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + 14);
+  sr_icmp_hdr_t *icmp_header = (sr_icmp_hdr_t *) (packet + 34);
   struct sr_if *intface = sr_get_interface(sr, interface); 
   sr_print_if(intface);
 
@@ -114,7 +115,6 @@ void sr_handle_ip(struct sr_instance* sr,
   printf("PRTOCOCOCOCOCOCOCL: %d \n", ip_header->ip_p);
   printf("DEST IP: \n");
   print_addr_ip_int(ntohl(ip_header->ip_dst)); 
-  printf("iface ip:\n");
   print_addr_ip_int(ntohl(intface->ip)); 
 
   if (intface->ip == ip_header->ip_dst) {
@@ -122,8 +122,10 @@ void sr_handle_ip(struct sr_instance* sr,
     printf("PACKET DESTINED TO US\n");
     if (ip_header->ip_p == ip_protocol_icmp){
       /*icmp echo request, send echo reply*/
-      handle_icmp(sr, 0, 0, packet, len, interface); 
-      return;
+      printf("ICMP TYPE IS : %d \n", icmp_header->icmp_type);
+      if(icmp_header->icmp_type == 8 && icmp_header->icmp_code == 0){
+        handle_icmp(sr, 0, 0, packet, len, interface);
+      }
     } else {
       printf("PORTTT UNREACHABLE\n");
       /*send port unreachable*/  
