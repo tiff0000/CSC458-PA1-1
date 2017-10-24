@@ -138,45 +138,41 @@ void sr_handle_ip(struct sr_instance* sr,
       ip_header->ip_sum = cksum(ip_header, sizeof(struct sr_ip_hdr));
       /*Perform LPM*/
       struct sr_rt * rtable = sr->routing_table;
+      int match = 0;
       struct sr_if *next_hop_iface = malloc(sizeof(struct sr_if)); 
       uint32_t gateway = NULL; 
-      int matches = 0; 
-      char next_hop_intface[sr_IFACE_NAMELEN];
+      uint32_t old = 0;
+      printf("DEST IP: \n");
+      print_addr_ip_int(ntohl(ip_header->ip_dst)); 
       
-      while(rtable){
-	
-		if(!((( rtable->dest.s_addr) ^ ip_header->ip_dst) & (rtable->mask.s_addr))){
-			uint32_t a = !(rtable->mask.s_addr);
-			a++;
-			int match = 0;
-			while(a != 1){
-				a /= 2;
-				match++;
-			}
-			match = 32 - match;
-			if(match > matches){
-				matches = match;
-				gateway =  rtable->gw.s_addr;
-				memcpy(next_hop_intface, rtable->interface, sr_IFACE_NAMELEN);
-			}
-		}
-		rtable = rtable->next;
-	}
+      while(rtable) {
+        uint32_t result = ((ip_header->ip_dst ^ rtable->dest.s_addr) & rtable->mask.s_addr);
+        printf("Result : %d \n", result);
+        printf("intface: %c \n", rtable->interface[3]);
+        if (result <= old) {
+          old = result;
+          printf("LONGEST  MATCH IS CURRENTLY: %c \n", rtable->interface[3]);
+          memcpy(next_hop_iface, sr_get_interface(sr, rtable->interface), sizeof(struct sr_if));
+          sr_print_if(next_hop_iface);
+          gateway = rtable->gw.s_addr;
+          match = 1;
+        }
+        rtable = rtable->next;
+      }
 
-      if(matches != 0) {
+      if(match == 1) {
       /*check arp cache*/
       /* Checks if an IP->MAC mapping is in the cache. IP is in network byte order. 
       You must free the returned structure if it is not NULL. */
         /*struct sr_arpentry * cache_entry =  sr_arpcache_lookup(&(sr->cache), ip_header->ip_dst);*/ 
-        struct sr_if * next_hop = sr_get_interface(sr, next_hop_intface);
         struct sr_arpentry * cache_entry =  sr_arpcache_lookup(&(sr->cache), ip_header->ip_dst);
-        memcpy(ethernet_header_send->ether_shost, next_hop->addr, ETHER_ADDR_LEN);
+        memcpy(ethernet_header_send->ether_shost, next_hop_iface->addr, ETHER_ADDR_LEN);
 
         if (cache_entry != NULL){
           printf("CACHE NOT NULL\n");
           /*send frame to next_hop*/
-          memcpy(ethernet_header_send->ether_dhost, cache_entry->mac, ETHER_ADDR_LEN);
-          sr_send_packet(sr, packet, len, next_hop->name);
+          memcpy(ethernet_header_send->ether_dhost, cache_entry->mac , ETHER_ADDR_LEN); 
+          sr_send_packet(sr, packet, len, next_hop_iface->name);
           free(cache_entry);
         } else {
           printf("CACHE NULL\n");
@@ -203,7 +199,6 @@ void sr_handle_arp(struct sr_instance* sr,
 
   if (arp_header->ar_tip == irface->ip){ 
     if (ntohs(arp_header->ar_op) == 1){
-      printf("SENDING REPLY HOMIE\n");
       /*Construct ARP reply and send it back*/
       /*New packet: 28 (for arp header) + 14 (for ethernet header)*/
 
@@ -356,20 +351,4 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
          sr_send_packet(sr, reply_pkt, len, interface);
          free(reply_pkt);
          return;
-}
-struct sr_rt * lpm(struct sr_rt * rtable, uint32_t dest_ip){
-
-      uint32_t gateway = NULL;
-      struct sr_rt *closestMatch = NULL; 
-      while(rtable) {
-        if ((dest_ip & rtable->mask.s_addr) == (rtable->dest.s_addr & rtable->mask.s_addr)) {
-          if (closestMatch == NULL || (rtable->mask.s_addr > closestMatch->mask.s_addr)) {
-            gateway = rtable->mask.s_addr;
-            closestMatch = rtable;
-          }
-        }
-        rtable = rtable->next;
-      }
-
-      return closestMatch;
 }
