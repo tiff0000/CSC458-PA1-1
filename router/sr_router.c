@@ -146,10 +146,10 @@ void sr_handle_ip(struct sr_instance* sr,
       print_addr_ip_int(ntohl(ip_header->ip_dst)); 
       
       while(rtable) {
-        uint32_t result = !((ip_header->ip_dst ^ rtable->dest.s_addr) & rtable->mask.s_addr);
+        uint32_t result = ((ip_header->ip_dst ^ rtable->dest.s_addr) & rtable->mask.s_addr);
         printf("Result : %d \n", result);
         printf("intface: %c \n", rtable->interface[3]);
-        if (result >= old) {
+        if (result <= old) {
           old = result;
           printf("LONGEST  MATCH IS CURRENTLY: %c \n", rtable->interface[3]);
           memcpy(next_hop_iface, sr_get_interface(sr, rtable->interface), sizeof(struct sr_if));
@@ -165,7 +165,7 @@ void sr_handle_ip(struct sr_instance* sr,
       /* Checks if an IP->MAC mapping is in the cache. IP is in network byte order. 
       You must free the returned structure if it is not NULL. */
         /*struct sr_arpentry * cache_entry =  sr_arpcache_lookup(&(sr->cache), ip_header->ip_dst);*/ 
-        struct sr_arpentry * cache_entry =  sr_arpcache_lookup(&(sr->cache), ntohl(gateway));
+        struct sr_arpentry * cache_entry =  sr_arpcache_lookup(&(sr->cache), ip_header->ip_dst);
         memcpy(ethernet_header_send->ether_shost, next_hop_iface->addr, ETHER_ADDR_LEN);
 
         if (cache_entry != NULL){
@@ -173,6 +173,7 @@ void sr_handle_ip(struct sr_instance* sr,
           /*send frame to next_hop*/
           memcpy(ethernet_header_send->ether_dhost, cache_entry->mac , ETHER_ADDR_LEN); 
           sr_send_packet(sr, packet, len, next_hop_iface->name);
+          free(cache_entry);
         } else {
           printf("CACHE NULL\n");
           /*add to arp queue*/
