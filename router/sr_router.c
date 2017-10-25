@@ -102,7 +102,6 @@ void sr_handle_ip(struct sr_instance* sr,
   sr_ethernet_hdr_t *ethernet_header_send = (sr_ethernet_hdr_t*) packet;
   sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + 14);
   sr_icmp_hdr_t *icmp_header = (sr_icmp_hdr_t *) (packet + 34);
-  struct sr_if *intface = sr_get_interface(sr, interface); 
 
   if(ip_header->ip_ttl <= 1) {
     /*send icmp time exceeded*/
@@ -284,12 +283,12 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
          memcpy(&(eth_hdr->ether_dhost), &(eth_hdr->ether_shost), ETHER_ADDR_LEN);
          eth_hdr->ether_type = htons(ethertype_ip);
 
-         ip_hdr->ip_len = htons(len - 14)
+         ip_hdr->ip_len = htons(len - 14);
          ip_hdr->ip_ttl = 64;
          ip_hdr->ip_p = ip_protocol_icmp;
          ip_hdr->ip_sum = 0;
          ip_hdr->ip_src = irface->ip;
-         ip_hdr->ip_dst = ip_hdr_old->ip_src;
+         ip_hdr->ip_dst = ip_hdr->ip_src;
   
          icmp_hdr->icmp_type = type;
          icmp_hdr->icmp_code = code;
