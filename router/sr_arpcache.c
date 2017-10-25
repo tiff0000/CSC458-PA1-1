@@ -27,8 +27,6 @@ void sr_arpcache_sweepreqs(struct sr_instance *sr) {
      handle_arpreq(sr, arp_request);
      arp_request = arp_request->next;
    }
-
-   return;
 }
 
 void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) { 

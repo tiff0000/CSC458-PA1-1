@@ -160,10 +160,8 @@ void sr_handle_ip(struct sr_instance* sr,
       } else{
         /*ICMP network unreachable*/
         handle_icmp_type3(sr, 3, 0, packet, len, interface);
-        return;
       }
   }
-  return;
 }
 
 void sr_handle_arp(struct sr_instance* sr,
@@ -205,8 +203,6 @@ void sr_handle_arp(struct sr_instance* sr,
       memcpy(ether_header_request->ether_dhost, ether_header_src->ether_shost, ETHER_ADDR_LEN); 
 
       sr_send_packet(sr, arp_reply, sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_arp_hdr), interface);
-
-      return;
 
     } else if (ntohs(arp_header->ar_op) == 2){
       /*cache it, go through request queue and send outstanding packets*/
@@ -272,7 +268,6 @@ void handle_icmp_type3(struct sr_instance *sr, int type, int code,  uint8_t * pa
 
          sr_send_packet(sr, reply_pkt, sizeof(struct sr_icmp_t3_hdr) + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr), interface);
          free(reply_pkt);
-         return;
 }
 
 void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, unsigned int len, char* interface) {
@@ -315,5 +310,4 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
 
          sr_send_packet(sr, reply_pkt, len, interface);
          free(reply_pkt);
-         return;
 }
