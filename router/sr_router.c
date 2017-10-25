@@ -165,10 +165,8 @@ void sr_handle_ip(struct sr_instance* sr,
       } else{
         /*ICMP network unreachable*/
         handle_icmp_type3(sr, 3, 0, packet, len, interface);
-        return;
       }
   }
-  return;
 }
 
 void sr_handle_arp(struct sr_instance* sr,
@@ -211,8 +209,6 @@ void sr_handle_arp(struct sr_instance* sr,
 
       sr_send_packet(sr, arp_reply, sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_arp_hdr), interface);
 
-      return;
-
     } else if (ntohs(arp_header->ar_op) == 2){
       /*cache it, go through request queue and send outstanding packets*/
       struct sr_arpreq *request = sr_arpcache_insert(&sr->cache, arp_header->ar_sha, arp_header->ar_sip);
@@ -229,17 +225,9 @@ void sr_handle_arp(struct sr_instance* sr,
           pkt_list = pkt_list->next;;
         }
         sr_arpreq_destroy(&(sr->cache), request);
-      } else{
-       /*IP is not in the request queue*/
-      } 
-    } else {
-      /*Invalid OP Code*/
-      return;
-    } 
-   } else{
-      /*Not destined to one of our interfaces*/      
-      return;
-   }
+      }
+    }
+  }
 }
 
 /** Handle all ICMP messages
@@ -262,12 +250,9 @@ void handle_icmp_type3(struct sr_instance *sr, int type, int code,  uint8_t * pa
          eth_hdr->ether_type = htons(ethertype_ip);
 
          ip_hdr->ip_tos = htons(0);
-         ip_hdr->ip_v = 0x4;
          ip_hdr->ip_hl = 5;
 	 ip_hdr->ip_len = htons(sizeof(struct sr_icmp_t3_hdr) + sizeof(struct sr_ip_hdr));
-         ip_hdr->ip_id = 0; 
          ip_hdr->ip_ttl = 64;
-         ip_hdr->ip_off = htons(IP_DF);
          ip_hdr->ip_p = ip_protocol_icmp;
          ip_hdr->ip_src = irface->ip;
          ip_hdr->ip_dst = ip_hdr_old->ip_src;
@@ -288,7 +273,6 @@ void handle_icmp_type3(struct sr_instance *sr, int type, int code,  uint8_t * pa
 
          sr_send_packet(sr, reply_pkt, sizeof(struct sr_icmp_t3_hdr) + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr), interface);
          free(reply_pkt);
-         return;
 }
 
 void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, unsigned int len, char* interface) {
@@ -309,9 +293,7 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
          memcpy(&(eth_hdr->ether_dhost), &(eth_hdr_old->ether_shost), ETHER_ADDR_LEN);
          eth_hdr->ether_type = htons(ethertype_ip);
 
-         ip_hdr->ip_v = 0x4;
          ip_hdr->ip_hl = 0x4;
-         ip_hdr->ip_tos = htons(0);
          ip_hdr->ip_len = htons(70 - len);
          ip_hdr->ip_id = htons(70 - len);
          ip_hdr->ip_ttl = 64;
@@ -323,7 +305,7 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
   
          icmp_hdr->icmp_type = type;
          icmp_hdr->icmp_code = code;
-         icmp_hdr->icmp_sum = 0x0;
+         icmp_hdr->icmp_sum = 0;
 
          /*as per RFC792, data received in the echo message must be returned in the echo reply message*/
          memcpy(icmp_hdr + 4, ip_hdr_old + sizeof(struct sr_icmp_hdr) + 4, len -  sizeof(struct sr_icmp_hdr) - 4);
@@ -333,5 +315,4 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
 
          sr_send_packet(sr, reply_pkt, len, interface);
          free(reply_pkt);
-         return;
 }
