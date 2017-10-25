@@ -81,16 +81,11 @@ void sr_handlepacket(struct sr_instance* sr,
   printf("*** -> Received packet of length %d \n",len);
  
   sr_ethernet_hdr_t *ethernet_header = (sr_ethernet_hdr_t *) packet;
-  struct sr_if *intface = sr_get_interface(sr, interface); 
 
-  uint8_t broadcast_addr[ETHER_ADDR_LEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}; 
-  /**check if our router is the dest or if it's a broadcast addr**/
-  if((memcmp(ethernet_header->ether_shost, intface->addr, ETHER_ADDR_LEN) != 0) || (memcmp(ethernet_header->ether_dhost, broadcast_addr, ETHER_ADDR_LEN) != 0)){
-    if (ethernet_header->ether_type == ntohs(ethertype_arp)){
-      sr_handle_arp(sr, packet, len, interface);
-    } else if (ethernet_header->ether_type == ntohs(ethertype_ip)) {
-        sr_handle_ip(sr, packet, len, interface);
-    }
+  if (ethernet_header->ether_type == 2054){
+    sr_handle_arp(sr, packet, len, interface);
+  } else if (ethernet_header->ether_type == 2048) {
+      sr_handle_ip(sr, packet, len, interface);
   }
 }
 
@@ -229,17 +224,9 @@ void sr_handle_arp(struct sr_instance* sr,
           pkt_list = pkt_list->next;;
         }
         sr_arpreq_destroy(&(sr->cache), request);
-      } else{
-       /*IP is not in the request queue*/
-      } 
-    } else {
-      /*Invalid OP Code*/
-      return;
-    } 
-   } else{
-      /*Not destined to one of our interfaces*/      
-      return;
-   }
+      }
+    }
+  }
 }
 
 /** Handle all ICMP messages
@@ -262,12 +249,9 @@ void handle_icmp_type3(struct sr_instance *sr, int type, int code,  uint8_t * pa
          eth_hdr->ether_type = htons(ethertype_ip);
 
          ip_hdr->ip_tos = htons(0);
-         ip_hdr->ip_v = 0x4;
          ip_hdr->ip_hl = 5;
 	 ip_hdr->ip_len = htons(sizeof(struct sr_icmp_t3_hdr) + sizeof(struct sr_ip_hdr));
-         ip_hdr->ip_id = 0; 
          ip_hdr->ip_ttl = 64;
-         ip_hdr->ip_off = htons(IP_DF);
          ip_hdr->ip_p = ip_protocol_icmp;
          ip_hdr->ip_src = irface->ip;
          ip_hdr->ip_dst = ip_hdr_old->ip_src;
@@ -309,9 +293,7 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
          memcpy(&(eth_hdr->ether_dhost), &(eth_hdr_old->ether_shost), ETHER_ADDR_LEN);
          eth_hdr->ether_type = htons(ethertype_ip);
 
-         ip_hdr->ip_v = 0x4;
          ip_hdr->ip_hl = 0x4;
-         ip_hdr->ip_tos = htons(0);
          ip_hdr->ip_len = htons(70 - len);
          ip_hdr->ip_id = htons(70 - len);
          ip_hdr->ip_ttl = 64;
@@ -323,7 +305,7 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
   
          icmp_hdr->icmp_type = type;
          icmp_hdr->icmp_code = code;
-         icmp_hdr->icmp_sum = 0x0;
+         icmp_hdr->icmp_sum = 0;
 
          /*as per RFC792, data received in the echo message must be returned in the echo reply message*/
          memcpy(icmp_hdr + 4, ip_hdr_old + sizeof(struct sr_icmp_hdr) + 4, len -  sizeof(struct sr_icmp_hdr) - 4);
