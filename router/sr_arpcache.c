@@ -43,8 +43,8 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
 
    if req:
        send all packets on the req->packets linked list
-       arpreq_destroy(req)
-*/
+       arpreq_destroy(req)*/
+
     time_t current_time;
     current_time = time(NULL);
    
@@ -89,10 +89,8 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) {
 
         sr_send_packet(sr, req_packet, 42, irface->name);
         free(req_packet);
-        return;
       }
     } 
-    return;
 }
 /* You should not need to touch the rest of this code. */
 

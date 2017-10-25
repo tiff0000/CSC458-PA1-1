@@ -109,17 +109,10 @@ void sr_handle_ip(struct sr_instance* sr,
     handle_icmp_type3(sr, 11, 0, packet, len, interface); 
   }
 
-  printf("PRTOCOCOCOCOCOCOCL: %d \n", ip_header->ip_p);
-  printf("DEST IP: \n");
-  print_addr_ip_int(ntohl(ip_header->ip_dst)); 
-
   int yes = 0;  
   struct sr_if * interface_list = sr->if_list; 
 
   while(interface_list) {
-    printf("dest ip: %u \n", ip_header->ip_dst);
-    printf("ifcae ip: %u \n", interface_list->ip);
-    print_addr_ip_int(ntohl(interface_list->ip)); 
     if(ip_header->ip_dst == interface_list->ip) {
       /*Packet is destined to us*/
       yes = 1;
@@ -129,100 +122,42 @@ void sr_handle_ip(struct sr_instance* sr,
 
   if (yes == 1){
     if (ip_header->ip_p == ip_protocol_icmp){
-      /*icmp echo request, send echo reply*/
-      printf("ICMP TYPE IS : %d \n", icmp_header->icmp_type);
       if(icmp_header->icmp_type == 8 && icmp_header->icmp_code == 0){
+        /*icmp echo request, send echo reply*/
         handle_icmp(sr, 0, 0, packet, len, interface);
       }
     }else {
-      printf("PORTTT UNREACHABLE\n");
       /*send port unreachable*/
       handle_icmp_type3(sr, 3, 3, packet, len, interface);
     }
   } else {
-      printf("PACKET NOOOT DESTINED TO US\n");
       /*Not destined to me*/
       ip_header->ip_ttl--;
       ip_header->ip_sum = 0x0;
       ip_header->ip_sum = cksum(ip_header, sizeof(struct sr_ip_hdr));
       /*Perform LPM*/
-      struct sr_rt * rtable = sr->routing_table;
-      int matches = 0;
-      uint32_t gateway = NULL; 
-      char next_hop_iface[sr_IFACE_NAMELEN];
-      printf("DEST IP, trying to find best macth: \n");
-      print_addr_ip_int(ntohl(ip_header->ip_dst)); 
-      print_hdrs(packet, len);
-      
-      while(rtable) {
-        if((ip_header->ip_dst & rtable->mask.s_addr) == (rtable->dest.s_addr)){
-          printf("Result : %d \n", (ip_header->ip_dst & rtable->mask.s_addr));  
-          printf("intface: %c \n", rtable->interface[3]);
-          printf("LONGEST  MATCH IS CURRENTLY: %c \n", rtable->interface[3]);
-          gateway = rtable->gw.s_addr;
-          memcpy(next_hop_iface, rtable->interface, sr_IFACE_NAMELEN);            
-          matches = 1;
-        }
-        /**printf("first bit %d \n", (result & (1 << 1)) >> 1);
-        printf("second bit %d \n", (result & (1 << 2)) >> 2);**/
-        /**if (result == 0) {
-          old = result;
-          printf("LONGEST  MATCH IS CURRENTLY: %c \n", rtable->interface[3]);
-          gateway = rtable->gw.s_addr;
-          memcpy(next_hop_iface, rtable->interface, sr_IFACE_NAMELEN);            
-          matches = 1;
-        }**/
-        /**if(!(((rtable->dest.s_addr) ^ ip_header->ip_dst) & (rtable->mask.s_addr))){
-          uint32_t a = !(rtable->mask.s_addr);
-          a++;
-          int match = 0;
+      struct sr_rt *best_match = lpm(sr->routing_table, ip_header->ip_dst);
 
-          while (a != 1){
-            a /= 2;
-            match++;
-          }
-          match = 32 - match;
-
-          if (match > matches){
-            matches = match;
-            gateway = rtable->gw.s_addr;
-            memcpy(next_hop_iface, rtable->interface, sr_IFACE_NAMELEN);            
-          }
-  
-        }**/
-        rtable = rtable->next;
-      }
-
-      if(matches != 0) {
- 
-      /*check arp cache*/
-      /* Checks if an IP->MAC mapping is in the cache. IP is in network byte order. 
-      You must free the returned structure if it is not NULL. */
-        /*struct sr_arpentry * cache_entry =  sr_arpcache_lookup(&(sr->cache), ip_header->ip_dst);*/ 
-        struct sr_if * next_hop = sr_get_interface(sr, next_hop_iface);
-        printf("BEST MATCH IFACE\n");
-        sr_print_if(next_hop);
-
+      if(best_match != NULL) {
+        /*check arp cache*/
+        struct sr_if * next_hop = sr_get_interface(sr, best_match->interface);
         struct sr_arpentry * cache_entry =  sr_arpcache_lookup(&(sr->cache), ip_header->ip_dst);
         memcpy(ethernet_header_send->ether_shost, next_hop->addr, ETHER_ADDR_LEN);
 
         if (cache_entry != NULL){
-          printf("CACHE NOT NULL\n");
           /*send frame to next_hop*/
-          memcpy(ethernet_header_send->ether_dhost, cache_entry->mac , ETHER_ADDR_LEN); 
-          sr_send_packet(sr, packet, len, next_hop_iface);
+          memcpy(ethernet_header_send->ether_dhost, cache_entry->mac , ETHER_ADDR_LEN);
+          sr_send_packet(sr, packet, len, best_match->interface);
           free(cache_entry);
         } else {
-          printf("CACHE NULL\n");
           /*add to arp queue*/
-          sr_arpcache_queuereq(&(sr->cache), gateway , packet, len, next_hop_iface);
+          sr_arpcache_queuereq(&(sr->cache), best_match->gw.s_addr, packet, len, interface);
         }
-      } else{
+      } else {
         /*ICMP network unreachable*/
         handle_icmp_type3(sr, 3, 0, packet, len, interface);
       }
   }
-  return;
 }
 
 void sr_handle_arp(struct sr_instance* sr,
@@ -334,7 +269,6 @@ void handle_icmp_type3(struct sr_instance *sr, int type, int code,  uint8_t * pa
 
          sr_send_packet(sr, reply_pkt, sizeof(struct sr_icmp_t3_hdr) + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr), interface);
          free(reply_pkt);
-         return;
 }
 
 void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, unsigned int len, char* interface) {
@@ -342,28 +276,18 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
          struct sr_if *irface = sr_get_interface(sr, interface); 
  
          /*Packet the router received*/
-         sr_ethernet_hdr_t * eth_hdr_old = (sr_ethernet_hdr_t *) packet;
-         sr_ip_hdr_t * ip_hdr_old = (sr_ip_hdr_t *) (packet + 14);
-         
-         uint8_t *reply_pkt = malloc(sizeof(struct sr_icmp_hdr) + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr)); 
-         sr_icmp_hdr_t * icmp_hdr = (sr_icmp_hdr_t *) (reply_pkt + sizeof(struct sr_ethernet_hdr) + sizeof( struct sr_ip_hdr));
-
-         sr_ethernet_hdr_t * eth_hdr = (sr_ethernet_hdr_t *) reply_pkt;
-         sr_ip_hdr_t * ip_hdr = (sr_ip_hdr_t *) (reply_pkt + 14);
+         sr_ethernet_hdr_t * eth_hdr = (sr_ethernet_hdr_t *) packet;
+         sr_ip_hdr_t * ip_hdr = (sr_ip_hdr_t *) (packet + 14);
+         sr_icmp_hdr_t * icmp_hdr = (sr_icmp_hdr_t *) (packet + sizeof(struct sr_ethernet_hdr) + sizeof( struct sr_ip_hdr));
 
          memcpy(&(eth_hdr->ether_shost), &(irface->addr), ETHER_ADDR_LEN);
-         memcpy(&(eth_hdr->ether_dhost), &(eth_hdr_old->ether_shost), ETHER_ADDR_LEN);
+         memcpy(&(eth_hdr->ether_dhost), &(eth_hdr->ether_shost), ETHER_ADDR_LEN);
          eth_hdr->ether_type = htons(ethertype_ip);
 
-         ip_hdr->ip_v = 0x4;
-         ip_hdr->ip_hl = 0x4;
-         ip_hdr->ip_tos = 0x0;
-         ip_hdr->ip_len = htons(70 - len);
-         ip_hdr->ip_id = htons(70 - len);
+         ip_hdr->ip_len = htons(len - 14)
          ip_hdr->ip_ttl = 64;
-         ip_hdr->ip_off = htons(IP_DF);
          ip_hdr->ip_p = ip_protocol_icmp;
-         ip_hdr->ip_sum = 0x0;
+         ip_hdr->ip_sum = 0;
          ip_hdr->ip_src = irface->ip;
          ip_hdr->ip_dst = ip_hdr_old->ip_src;
   
@@ -371,13 +295,23 @@ void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, 
          icmp_hdr->icmp_code = code;
          icmp_hdr->icmp_sum = 0;
 
-         /*as per RFC792, data received in the echo message must be returned in the echo reply message*/
-         memcpy(icmp_hdr + 4, ip_hdr_old + sizeof(struct sr_icmp_hdr) + 4, len -  sizeof(struct sr_icmp_hdr) - 4);
-
          icmp_hdr->icmp_sum = cksum(icmp_hdr, ICMP_DATA_SIZE);
          ip_hdr->ip_sum = cksum(ip_hdr, 20);
 
-         sr_send_packet(sr, reply_pkt, len, interface);
-         free(reply_pkt);
-         return;
+         sr_send_packet(sr, packet, len, interface);
+}
+
+struct sr_rt *lpm(struct sr_rt *rtable, uint32_t dest_ip) {
+
+        struct sr_rt *match = NULL;
+        while(rtable != NULL) {
+          if((dest_ip & rtable->mask.s_addr) == (rtable->dest.s_addr)) {
+             if(rtable->mask.s_addr > match->mask.s_addr || match == NULL){
+               match = rtable;
+             }
+          }
+          rtable = rtable->next;
+        }
+
+        return match;
 }
