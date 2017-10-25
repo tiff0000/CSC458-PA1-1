@@ -86,9 +86,9 @@ void sr_handlepacket(struct sr_instance* sr,
   uint8_t broadcast_addr[ETHER_ADDR_LEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}; 
   /**check if our router is the dest or if it's a broadcast addr**/
   if((memcmp(ethernet_header->ether_shost, intface->addr, ETHER_ADDR_LEN) != 0) || (memcmp(ethernet_header->ether_dhost, broadcast_addr, ETHER_ADDR_LEN) != 0)){
-    if (ethernet_header->ether_type == ntohs(ethertype_arp)){
+    if (ethernet_header->ether_type == 2054){
       sr_handle_arp(sr, packet, len, interface);
-    } else if (ethernet_header->ether_type == ntohs(ethertype_ip)) {
+    } else if (ethernet_header->ether_type == 2048) {
         sr_handle_ip(sr, packet, len, interface);
     }
   }
