@@ -1,14 +1,142 @@
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <sched.h>
 #include <string.h>
+#include "sr_arpcache.h"
 #include "sr_router.h"
 #include "sr_if.h"
 #include "sr_protocol.h"
+#include "sr_utils.h"
+
+void send_icmp_t3(struct sr_instance* sr, uint8_t* packet, int type, int code, uint len, char* iface) {
+    printf("Sending icmp packet type: %d and code: %d\n", type, code);
+    sr_ip_hdr_t* ip_header = (sr_ip_hdr_t*) (packet + sizeof(sr_ethernet_hdr_t));
+
+    /* New ICMP packet */
+    uint8_t* icmp = (uint8_t*) malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));
+    sr_ethernet_hdr_t *icmp_ether = (sr_ethernet_hdr_t *) icmp;
+    sr_ip_hdr_t *icmp_ip = (sr_ip_hdr_t *) (icmp + sizeof(sr_ethernet_hdr_t));
+    sr_icmp_t3_hdr_t* icmp_header = (sr_icmp_t3_hdr_t*) (icmp + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+
+    char* mac = sr_lpm(sr, ip_header->ip_src);
+    if (mac == NULL) {
+        return;
+    }
+    printf("Found MAC\n");
+    struct sr_if* mac_interface = sr_get_interface(sr, mac);
+    if (!mac_interface) {
+        return;
+    }
+    icmp_ip->ip_src = mac_interface->ip;
+    if (type == 3 && code == 3) {
+        icmp_ip->ip_src = ip_header->ip_dst;
+    }
+
+    /* Ethernet header */
+    icmp_ether->ether_type = ntohs(ethertype_ip);
+
+    /* IP header */
+    icmp_ip->ip_hl = ip_header->ip_hl;
+    icmp_ip->ip_v = ip_header->ip_v;
+    icmp_ip->ip_tos = ip_header->ip_tos;
+    icmp_ip->ip_len = htons( sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));
+    icmp_ip->ip_id = ip_header->ip_id;
+    icmp_ip->ip_off = ip_header->ip_off;
+    icmp_ip->ip_ttl = 64;
+    icmp_ip->ip_p = ip_protocol_icmp;
+    icmp_ip->ip_sum = 0;
+    icmp_ip->ip_dst = ip_header->ip_src;
+    memcpy(icmp_ether->ether_shost, mac_interface->addr, ETHER_ADDR_LEN);
+    icmp_ip->ip_sum = cksum((void*)icmp_ip, 20);
+
+    /* ICMP Header */
+    icmp_header->icmp_type = type;
+    icmp_header->icmp_code = code;
+    icmp_header->icmp_sum = 0;
+    icmp_header->unused = 0;
+    icmp_header->next_mtu = 0;
+    memcpy(icmp_header->data, ip_header, ICMP_DATA_SIZE);
+    icmp_header->icmp_sum = cksum((void*) icmp_header, sizeof(sr_icmp_t3_hdr_t));
+    uint length = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+
+    struct sr_arpentry* entry = sr_arpcache_lookup(&sr->cache, icmp_ip->ip_dst);
+    if (entry) {
+        printf("ARP Cache Hit\n");
+        memcpy(icmp_ether->ether_dhost, entry->mac, ETHER_ADDR_LEN);
+        memcpy(icmp_ether->ether_shost, mac_interface->addr, ETHER_ADDR_LEN);
+        sr_send_packet(sr, (uint8_t*) icmp, length, mac);
+        free(entry);
+    } else {
+        printf("ARP Cache Miss\n");
+        memcpy(icmp_ether->ether_shost, mac_interface->addr, ETHER_ADDR_LEN);
+        sr_arpcache_queuereq(&sr->cache, icmp_ip->ip_dst, icmp, length, mac);
+    }
+    free(icmp);
+}
+
+void send_host_unreachable(struct sr_instance* sr, struct sr_arpreq* req) {
+    struct sr_packet* packet;
+    for (packet = req->packets; packet != NULL; packet=packet->next) {
+        sr_ip_hdr_t* ip_h = (sr_ip_hdr_t*) (packet->buf + sizeof(sr_ethernet_hdr_t));
+        char* iface = sr_lpm(sr, ip_h->ip_src);
+        send_icmp_t3(sr, packet->buf, 3, 1, packet->len, iface);
+        sr_arpreq_destroy(&sr->cache, req);
+    }
+}
+
+void send_arp_request(struct sr_instance* sr, struct sr_arpreq* req) {
+    uint8_t* arp_packet = (uint8_t*) malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
+    /* Ethernet header */
+    sr_ethernet_hdr_t* arp_ether = (sr_ethernet_hdr_t*) arp_packet;
+    struct sr_if* interface = sr_get_interface(sr, req->packets->iface);
+    memcpy(arp_ether->ether_shost, interface->addr, ETHER_ADDR_LEN);
+    memset(arp_ether->ether_dhost, 255, ETHER_ADDR_LEN);
+    arp_ether->ether_type = htons(ethertype_arp);
+
+    /* ARP header */
+    sr_arp_hdr_t* arp_header = (sr_arp_hdr_t*) (arp_packet + sizeof(sr_ethernet_hdr_t));
+    arp_header->ar_hrd = htons(arp_hrd_ethernet);
+    arp_header->ar_pro = htons(2048);
+    arp_header->ar_hln = ETHER_ADDR_LEN;
+    arp_header->ar_pln = 4;
+    arp_header->ar_op = htons(arp_op_request);
+    memcpy(arp_header->ar_sha, interface->addr, ETHER_ADDR_LEN);
+    arp_header->ar_sip = interface->ip;
+    memset(arp_header->ar_tha, 0, ETHER_ADDR_LEN);
+    arp_header->ar_tip = req->ip;
+
+    uint8_t size = sizeof(sr_arp_hdr_t) + sizeof(sr_ethernet_hdr_t);
+    print_hdrs(arp_packet, size);
+    int error = sr_send_packet(sr, arp_packet, size, interface->name);
+    if (!error) {
+        printf("ARP request packet sent\n");
+    } else {
+        printf("ARP request send failed\n");
+    }
+    free(arp_packet);
+} 
+
+
+void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* req) {
+    time_t now = time(0);
+    if (difftime(now, req->sent) >= 1.0) {
+        if (req->times_sent >= 5){
+            printf("ICMP unreachable\n");
+            send_host_unreachable(sr, req);
+            sr_arpreq_destroy(&sr->cache, req);
+        } else {
+            printf("Sending new ARP request\n");
+            send_arp_request(sr, req);
+            req->sent = now;
+            req->times_sent++;
+        }
+    }
+}
 
 /* 
   This function gets called every second. For each request sent out, we keep
@@ -16,80 +144,14 @@
   See the comments in the header file for an idea of what it should look like.
 */
 void sr_arpcache_sweepreqs(struct sr_instance *sr) { 
-  /*Iterate through the ARP request queue and re-send any outstanding ARP requests that haven't
-   * been sent in the last second. If an ARP request has been sent 5 times with no reponse, a dest
-   * host unreachable should be sent back to all the sender of packets that were waiting on a reply
-   * to this ARP request
-   */ 
-
-   struct sr_arpreq *arp_request = sr->cache.requests;
-   while(arp_request) {
-     handle_arpreq(sr, arp_request);
-     arp_request = arp_request->next;
-   }
+    /* Fill this in */
+    struct sr_arpcache* cache = &sr->cache;
+    struct sr_arpreq* req;
+    for (req = cache->requests; req != NULL; req = req->next) {
+        handle_arpreq(sr, req);
+    }
 }
 
-void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *sr_arp_req) { 
-/*  The handle_arpreq() function is a function you should write, and it should
-   handle sending ARP requests if necessary:
-
-   The ARP reply processing code should move entries from the ARP request
-   queue to the ARP cache:
-
-   # When servicing an arp reply that gives us an IP->MAC mapping
-   req = arpcache_insert(ip, mac)
-
-   if req:
-       send all packets on the req->packets linked list
-       arpreq_destroy(req)*/
-
-    time_t current_time;
-    current_time = time(NULL);
-   
-    uint8_t broadcst_addr[ETHER_ADDR_LEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-    uint8_t broadcst_ip[ETHER_ADDR_LEN] = {0, 0, 0, 0, 0, 0};
-    
-    if (difftime(current_time, sr_arp_req->sent) >= 1.0) {
-      if (sr_arp_req->sent >= 5){
-        struct sr_packet *curr_packet = sr_arp_req->packets;
-
-        while(curr_packet != NULL) {
-           handle_icmp_type3(sr, 3, 1, curr_packet->buf, curr_packet->len, curr_packet->iface);
-           curr_packet = curr_packet->next;
-        }
-        sr_arpreq_destroy(&(sr->cache), sr_arp_req);
-
-      } else {
-        /*Send arp request*/
-        uint8_t *req_packet = malloc(sizeof(struct sr_arp_hdr) + sizeof(struct sr_ethernet_hdr));
-        struct sr_arp_hdr *arp_hdr = (struct sr_arp_hdr *)(req_packet + sizeof(struct sr_ethernet_hdr));
-        struct sr_ethernet_hdr *eth_hdr = (struct sr_ethernet_hdr *) req_packet;
-
-        struct sr_if *irface = sr_get_interface(sr, sr_arp_req->packets->iface);         
-
-        arp_hdr->ar_hrd = htons(arp_hrd_ethernet);
-        arp_hdr->ar_pro = htons(ethertype_ip); 
-        arp_hdr->ar_hln = ETHER_ADDR_LEN;
-        arp_hdr->ar_pln = 4;  
-        arp_hdr->ar_op = htons(arp_op_request);  
-        arp_hdr->ar_sip = irface->ip;
-        arp_hdr->ar_tip = sr_arp_req->ip; 
-        memcpy(&arp_hdr->ar_sha, irface->addr, ETHER_ADDR_LEN);
-        /*target mac is broadcast*/
-        memcpy(&arp_hdr->ar_tha, broadcst_ip, ETHER_ADDR_LEN); 
-
-        sr_arp_req->sent = time(NULL);
-        sr_arp_req->times_sent++;
-
-        eth_hdr->ether_type = htons(ethertype_arp);
-        memcpy(eth_hdr->ether_shost, irface->addr, ETHER_ADDR_LEN);
-        memcpy(eth_hdr->ether_dhost, broadcst_addr, ETHER_ADDR_LEN);
-
-        sr_send_packet(sr, req_packet, 42, irface->name);
-        free(req_packet);
-      }
-    } 
-}
 /* You should not need to touch the rest of this code. */
 
 /* Checks if an IP->MAC mapping is in the cache. IP is in network byte order.

@@ -67,8 +67,6 @@ int sr_read_from_server(struct sr_instance* );
 /* -- sr_router.c -- */
 void sr_init(struct sr_instance* );
 void sr_handlepacket(struct sr_instance* , uint8_t * , unsigned int , char* );
-void sr_handle_ip(struct sr_instance* , uint8_t * , unsigned int , char* );
-void sr_handle_arp(struct sr_instance* , uint8_t * , unsigned int , char* );
 
 /* -- sr_if.c -- */
 void sr_add_interface(struct sr_instance* , const char* );
@@ -76,9 +74,6 @@ void sr_set_ether_ip(struct sr_instance* , uint32_t );
 void sr_set_ether_addr(struct sr_instance* , const unsigned char* );
 void sr_print_if_list(struct sr_instance* );
 
-/* Handle ICMP requests */
-void handle_icmp(struct sr_instance *sr, int type, int code,  uint8_t * packet, unsigned int len, char* interface);
-void handle_icmp_type3(struct sr_instance *sr, int type, int code,  uint8_t * packet, unsigned int len, char* interface);
-
-struct sr_rt *lpm(struct sr_rt *rtable, uint32_t dest_ip);
+char* sr_lpm(struct sr_instance* sr, uint32_t ip);
+void send_icmp_t3(struct sr_instance* sr, uint8_t* packet, int type, int code, uint len, char* iface);
 #endif /* SR_ROUTER_H */
