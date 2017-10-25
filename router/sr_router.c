@@ -103,6 +103,7 @@ void sr_handle_ip(struct sr_instance* sr,
 {
   sr_ethernet_hdr_t *ethernet_header_send = (sr_ethernet_hdr_t*) packet;
   sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(struct sr_ethernet_hdr));
+  sr_icmp_hdr_t *icmp_header = (sr_icmp_hdr_t *) (packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr));
   struct sr_if *intface = sr_get_interface(sr, interface); 
   sr_print_if(intface);
 
@@ -111,26 +112,28 @@ void sr_handle_ip(struct sr_instance* sr,
     handle_icmp_type3(sr, 11, 0, packet, len, interface); 
   }
 
-  printf("PRTOCOCOCOCOCOCOCL: %d \n", ip_header->ip_p);
-  printf("DEST IP: \n");
-  print_addr_ip_int(ntohl(ip_header->ip_dst)); 
-  printf("iface ip:\n");
-  print_addr_ip_int(ntohl(intface->ip)); 
+  int yes = 0;  
+  struct sr_if * interface_list = sr->if_list; 
 
-  if (intface->ip == ip_header->ip_dst) {
-    /*Packet is destined to US*/ 
-    printf("PACKET DESTINED TO US\n");
-    if (ip_header->ip_p == ip_protocol_icmp){
-      /*icmp echo request, send echo reply*/
-      handle_icmp(sr, 0, 0, packet, len, interface); 
-      return;
-    } else {
-      printf("PORTTT UNREACHABLE\n");
-      /*send port unreachable*/  
-      handle_icmp_type3(sr, 3, 3, packet, len, interface); 
+  while(interface_list) {
+    if(ip_header->ip_dst == interface_list->ip) {
+      /*Packet is destined to us*/
+      yes = 1;
     }
-    /*dunno what to do here*/ 
-    return;
+    interface_list = interface_list->next;
+  }
+
+  if (yes == 1){
+    /*destined to us*/
+    if (ip_header->ip_p == ip_protocol_icmp){
+      if(icmp_header->icmp_type == 8 && icmp_header->icmp_code == 0){
+        /*icmp echo request, send echo reply*/
+        handle_icmp(sr, 0, 0, packet, len, interface);
+      }
+    }else {
+      /*send port unreachable*/
+      handle_icmp_type3(sr, 3, 3, packet, len, interface);
+    }
   } else {
       /*Not destined to me*/
       ip_header->ip_ttl--;
