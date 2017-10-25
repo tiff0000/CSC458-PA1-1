@@ -102,7 +102,6 @@ void sr_handle_ip(struct sr_instance* sr,
   sr_ethernet_hdr_t *ethernet_header_send = (sr_ethernet_hdr_t*) packet;
   sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(struct sr_ethernet_hdr));
   sr_icmp_hdr_t *icmp_header = (sr_icmp_hdr_t *) (packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr));
-  struct sr_if *intface = sr_get_interface(sr, interface); 
 
   if(ip_header->ip_ttl <= 1) {
     /*send icmp time exceeded*/
@@ -138,7 +137,7 @@ void sr_handle_ip(struct sr_instance* sr,
       ip_header->ip_sum = cksum(ip_header, sizeof(struct sr_ip_hdr));
       /*Perform LPM*/
       struct sr_rt * best_match = sr->routing_table;
-      struct sr_rt *next_hop = NULL; 
+       struct sr_rt * rtable = sr->routing_table;
       uint32_t gateway = NULL; 
       
       while(rtable) {
@@ -161,7 +160,7 @@ void sr_handle_ip(struct sr_instance* sr,
           free(cache_entry);
         } else {
           /*add to arp queue*/
-          sr_arpcache_queuereq(&(sr->cache), gateway , packet, len, next_hop_iface->name);
+          sr_arpcache_queuereq(&(sr->cache), gateway , packet, len, next_hop->name);
         }
       } else{
         /*ICMP network unreachable*/
