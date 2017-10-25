@@ -100,8 +100,10 @@ void sr_handle_ip(struct sr_instance* sr,
         char* interface/* lent */)
 {
   sr_ethernet_hdr_t *ethernet_header_send = (sr_ethernet_hdr_t*) packet;
-  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + 14);
-  sr_icmp_hdr_t *icmp_header = (sr_icmp_hdr_t *) (packet + 34);
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(struct sr_ethernet_hdr));
+  sr_icmp_hdr_t *icmp_header = (sr_icmp_hdr_t *) (packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_ip_hdr));
+  struct sr_if *intface = sr_get_interface(sr, interface); 
+  sr_print_if(intface);
 
   if(ip_header->ip_ttl <= 1) {
     /*send icmp time exceeded*/
@@ -120,6 +122,7 @@ void sr_handle_ip(struct sr_instance* sr,
   }
 
   if (yes == 1){
+    /*destined to us*/
     if (ip_header->ip_p == ip_protocol_icmp){
       if(icmp_header->icmp_type == 8 && icmp_header->icmp_code == 0){
         /*icmp echo request, send echo reply*/
